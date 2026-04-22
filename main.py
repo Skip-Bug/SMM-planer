@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from telegram import Bot
 from telegram.error import BadRequest, NetworkError, TimedOut, Unauthorized
 
-from tg_post import send_text, send_image, delete_message
+from tg_poster import send_text, send_image, delete_message
 
 
 def main():

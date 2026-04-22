@@ -27,7 +27,7 @@ def send_vk_message(message, from_group=1):
     return f'Пост {post_id} успешно создан'
 
 
-def delete_vk_message( post_id):
+def delete_vk_message(post_id):
     vk_url = "https://api.vk.com/method/wall.delete"
     vk_token = os.environ['VK_TOKEN']
     owner_id = os.environ['OWNER_ID']

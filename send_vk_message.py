@@ -24,7 +24,7 @@ def send_vk_message(message, from_group=1):
 
     message_data = response.json()
     post_id = message_data['response']['post_id']
-    return f'Пост {post_id} успешно создан'
+    return post_id
 
 
 def delete_vk_message(post_id):

@@ -4,47 +4,42 @@ import os
 
 load_dotenv()
 
+VK_API_VERSION = 5.199
 
-def send_vk_message():
+def send_vk_message(message, from_group=1):
     vk_url = "https://api.vk.com/method/wall.post"
     vk_token = os.environ['VK_TOKEN']
+    owner_id = os.environ['OWNER_ID']
 
     params = {
         'access_token': vk_token,
-        'v': '5.199',
-        'owner_id': '-237933972',
-        'message': 'Привет от Кирюши',
-        'from_group': 1
-
+        'v': VK_API_VERSION,
+        'owner_id': owner_id,
+        'message': message,
+        'from_group': from_group,
     }
 
     response = requests.get(vk_url, params=params)
     response.raise_for_status()
 
-    if response.status_code == 200:
-        print('Успешно')
-    else:
-        print('Ошибка при отправке сообщения')
+    message_data = response.json()
+    post_id = message_data['response']['post_id']
+    return f'Пост {post_id} успешно создан'
 
 
-def delete_vk_message():
-    post_id = int(input('Введите id записи '))
-
+def delete_vk_message( post_id):
     vk_url = "https://api.vk.com/method/wall.delete"
     vk_token = os.environ['VK_TOKEN']
+    owner_id = os.environ['OWNER_ID']
 
     params = {
         'access_token': vk_token,
-        'v': '5.199',
-        'owner_id': '-237933972',
-        'post_id': post_id
+        'v': VK_API_VERSION,
+        'owner_id': owner_id,
+        'post_id': post_id,
 
     }
 
     response = requests.get(vk_url, params=params)
     response.raise_for_status()
-
-    if response.status_code == 200:
-        print(f'Запись {post_id} успешно удалена')
-    else:
-        print('Ошибка удаления')
+    return f'Пост {post_id} успешно удален'

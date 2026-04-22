@@ -56,4 +56,3 @@ def delete_vk_message(post_id):
     return f'Пост {post_id} успешно удален'
 
 
-send_vk_message('Привет')

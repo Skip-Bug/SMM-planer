@@ -1,7 +1,7 @@
 import gspread
 import send_vk_message
 import time
-
+from pathlib import Path
 
 
 def read_sheet():
@@ -10,18 +10,10 @@ def read_sheet():
     2. Читать из нее данные
     3. Отправить данные из таблицы
     4. Вернуть id поста и статус '''
-    sheet_url = 'https://docs.google.com/spreadsheets/d/1MebKepXP5of1ZUVzMkGDDWwhok2DQq3ncYngKCeLDJI/edit?usp=sharing'
-    sheet = gc.open_by_url(sheet_url)
-    # 🔹 ID таблицы из URL
+    gc = gspread.service_account(filename='credentials.json')
     spreadsheet_id = '19oRm83_XQWaSwP47WaTtVeItYi5T4lgO8UNmaxupwt4'
+    sheet = gc.open_by_key(spreadsheet_id)
 
-    # 🔹 Аутентификация
-    credentials_path = Path('credentials.json')
-
-    if not credentials_path.exists():
-        print('❌ Файл credentials.json не найден!')
-        print('📝 Скачайте его из Google Cloud Console')
-    
     while True:
         sheet_data = sheet.get_all_values()
         message = sheet.col_values(2)
@@ -43,8 +35,10 @@ def read_sheet():
             if classniki == 'TRUE':
                 print(f'Отправка {message} в одноклассники')
 
-
         time.sleep(60)
+
+
+read_sheet()
 
 
 

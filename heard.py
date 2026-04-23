@@ -12,7 +12,8 @@ def read_sheet():
     4. Вернуть id поста и статус '''
     gc = gspread.service_account(filename='credentials.json')
     spreadsheet_id = '19oRm83_XQWaSwP47WaTtVeItYi5T4lgO8UNmaxupwt4'
-    sheet = gc.open_by_key(spreadsheet_id)
+    spreadsheet = gc.open_by_key(spreadsheet_id)
+    sheet = spreadsheet.sheet1
 
     while True:
         sheet_data = sheet.get_all_values()
@@ -28,8 +29,8 @@ def read_sheet():
 
             if vk == 'TRUE':
                 post_id = send_vk_message.send_vk_message(message)
-                sheet.update(f'H{i}', post_id)
-                sheet.update(f'E{i}', 'FALSE')
+                sheet.update(f'i{i}', [[post_id]])
+                sheet.update(f'E{i}', [['FALSE']])
             if tg == 'TRUE':
                 print(f'Отправка {message} в тг')
             if classniki == 'TRUE':
@@ -39,6 +40,7 @@ def read_sheet():
 
 
 read_sheet()
+
 
 
 

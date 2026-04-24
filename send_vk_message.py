@@ -5,7 +5,7 @@ import os
 
 load_dotenv()
 
-VK_URL = "https://api.vk.com/method/wall.post"
+vk_url = "https://api.vk.com/method/wall.post"
 VK_API_VERSION = 5.199
 VK_TOKEN = os.environ['VK_TOKEN']
 OWNER_ID = os.environ['OWNER_ID']
@@ -54,5 +54,3 @@ def delete_vk_message(post_id):
     response = requests.get(vk_url, params=params)
     response.raise_for_status()
     return f'Пост {post_id} успешно удален'
-
-

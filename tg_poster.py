@@ -1,24 +1,24 @@
-"""Модуль для постинга и удаления в Telegram-канал."""
+"""Модуль для постинга и удаления в Telegram-канал.
+
+Функции не обрабатывают исключения — они передаются наверх.
+"""
 
 
 def send_text(bot, channel_id, text_content):
-    """Отправляет текст из файла в Telegram канал.
+    """Отправляет текст в Telegram канал.
 
     Args:
         bot: Экземпляр Telegram Bot.
         channel_id: ID канала.
-        text_content: Путь к текстовому файлу.
+        text_content: Текст сообщения (строка).
 
     Returns:
         int: message_id отправленного сообщения.
 
     Raises:
-        Telegram errors: При проблемах с отправкой.
+        telegram.error.TelegramError: При проблемах с отправкой.
     """
-    message = bot.send_message(
-        chat_id=channel_id,
-        text=text_content
-    )
+    message = bot.send_message(chat_id=channel_id, text=text_content)
     return message.message_id
 
 
@@ -35,7 +35,7 @@ def send_image(bot, channel_id, image_path, caption=''):
         int: message_id отправленного сообщения.
 
     Raises:
-        Telegram errors: При проблемах с отправкой.
+        telegram.error.TelegramError: При проблемах с отправкой.
     """
     with open(image_path, 'rb') as image_file:
         message = bot.send_photo(
@@ -58,7 +58,7 @@ def delete_message(bot, channel_id, message_id):
         bool: True если удаление успешно.
 
     Raises:
-        Telegram errors: При проблемах с удалением.
+        telegram.error.TelegramError: При проблемах с удалением.
     """
     bot.delete_message(chat_id=channel_id, message_id=message_id)
     return True

@@ -21,10 +21,7 @@ def load_content(source):
         FileNotFoundError: Если файл не найден.
         ValueError: Если источник не распознан.
     """
-    if isinstance(
-        source,
-        str
-    ) and (source.startswith('http://') or source.startswith('https://')):
+    if isinstance(source, str) and source.startswith(('http://', 'https://')):
         response = requests.get(source, timeout=10)
         response.raise_for_status()
         return response.text
@@ -37,7 +34,6 @@ def load_content(source):
             return str(source)
         else:
             raise FileNotFoundError(f'Файл не найден: {source}')
-
     return str(source)
 
 
@@ -45,7 +41,7 @@ def load_image(image_url):
     """Скачивает изображение по URL во временный файл.
 
     Args:
-        image_url: Ссылка или путь к изображению  .
+        image_url: Ссылка или путь к изображению.
 
     Returns:
         Path: Путь к скачанному файлу.
@@ -57,9 +53,7 @@ def load_image(image_url):
     if not image_url or not isinstance(image_url, str):
         return None
 
-    if not (
-        image_url.startswith('http://') or image_url.startswith('https://')
-    ):
+    if not image_url.startswith(('http://', 'https://')):
         path = Path(image_url)
         if path.exists():
             return path

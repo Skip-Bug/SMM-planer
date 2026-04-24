@@ -1,13 +1,13 @@
 """Модуль для постинга и удаления в Telegram-канал."""
 
 
-def send_text(bot, channel_id, text_path):
+def send_text(bot, channel_id, text_content):
     """Отправляет текст из файла в Telegram канал.
 
     Args:
         bot: Экземпляр Telegram Bot.
         channel_id: ID канала.
-        text_path: Путь к текстовому файлу.
+        text_content: Путь к текстовому файлу.
 
     Returns:
         int: message_id отправленного сообщения.
@@ -15,9 +15,6 @@ def send_text(bot, channel_id, text_path):
     Raises:
         Telegram errors: При проблемах с отправкой.
     """
-    with open(text_path, 'r', encoding='utf-8') as file:
-        text_content = file.read()
-
     message = bot.send_message(
         chat_id=channel_id,
         text=text_content

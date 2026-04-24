@@ -5,15 +5,27 @@ import gspread
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
-load_dotenv()
+
+ASCII_OFFSET = 64  # Для конвертации номера колонки в букву (1→A)
+DEFAULT_SHEET_INDEX = 0  # Первый лист по умолчанию
+DEFAULT_CREDENTIALS = 'credentials.json'  # Файл учётных данных
+SCOPES = [  # Разрешения Google API
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 
 
-def get_worksheet(sheet_index=0, spreadsheet_id=None, credentials_path=None):
+def get_worksheet(
+    sheet_index=DEFAULT_SHEET_INDEX,
+    spreadsheet_id=None,
+    credentials_path=None
+):
     """Возвращает объект worksheet (лист) по индексу."""
+    load_dotenv()
     if spreadsheet_id is None:
         spreadsheet_id = os.getenv('SPREADSHEET_ID')
     if credentials_path is None:
-        credentials_path = os.getenv('CREDENTIALS_PATH', 'credentials.json')
+        credentials_path = os.getenv('CREDENTIALS_PATH', DEFAULT_CREDENTIALS)
 
     if not spreadsheet_id:
         raise ValueError('Не указан ID таблицы (SPREADSHEET_ID в .env)')
@@ -22,19 +34,15 @@ def get_worksheet(sheet_index=0, spreadsheet_id=None, credentials_path=None):
     if not creds_path.exists():
         raise FileNotFoundError(f'Файл {credentials_path} не найден')
 
-    scopes = [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive'
-    ]
     creds = Credentials.from_service_account_file(
-        str(creds_path), scopes=scopes)
+        str(creds_path), scopes=SCOPES)
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(spreadsheet_id)
 
     return spreadsheet.get_worksheet(sheet_index)
 
 
-def get_rows_with_numbers(sheet_index=0):
+def get_rows_with_numbers(sheet_index=DEFAULT_SHEET_INDEX):
     """Возвращает данные с номерами строк (для обновления).
 
     Returns:
@@ -73,6 +81,15 @@ def update_cell_by_header(sheet_index, row, column_header, value):
     ws.update_cell(row, col, value)
 
 
+def _col_index_to_letter(col):
+    """Конвертирует номер колонки в букву (1→A, 27→AA)."""
+    letters = []
+    while col > 0:
+        col, remainder = divmod(col - 1, 26)
+        letters.append(chr(ASCII_OFFSET + 1 + remainder))
+    return ''.join(reversed(letters))
+
+
 def batch_update_by_headers(sheet_index, row, updates_dict):
     """Обновляет НЕСКОЛЬКО ячеек в одной строке за один запрос.
 
@@ -102,7 +119,8 @@ def batch_update_by_headers(sheet_index, row, updates_dict):
     for header, value in updates_dict.items():
         try:
             col = headers.index(header) + 1
-            range_name = f"{ws.title}!{chr(64 + col)}{row}"
+            col_letter = _col_index_to_letter(col)
+            range_name = f"{col_letter}{row}"
             batch_requests.append({
                 "range": range_name,
                 "values": [[str(value)]],

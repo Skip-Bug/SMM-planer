@@ -1,8 +1,4 @@
-"""Модуль для работы с Google Sheets.
-
-Минимализм: только нужные функции.
-Исключения не обрабатываются внутри — они передаются наверх.
-"""
+"""Модуль для работы с Google Sheets."""
 import os
 from pathlib import Path
 
@@ -50,7 +46,9 @@ def get_worksheet(sheet_index=DEFAULT_SHEET_INDEX, spreadsheet_id=None,
         raise FileNotFoundError(f'Файл {credentials_path} не найден')
 
     creds = Credentials.from_service_account_file(
-        str(creds_path), scopes=SCOPES)
+        str(creds_path),
+        scopes=SCOPES
+    )
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(spreadsheet_id)
 
@@ -74,6 +72,23 @@ def get_rows_with_numbers(sheet_index=DEFAULT_SHEET_INDEX):
     numbers = list(range(2, len(all_vals) + 1))
 
     return rows, numbers, headers
+
+
+def get_field(row, col_idx, col_name):
+    """Безопасно возвращает значение поля из строки по имени колонки.
+
+    Args:
+        row: Список значений строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        col_name: Имя нужной колонки.
+
+    Returns:
+        str: Значение ячейки (очищенное от пробелов) или пустая строка.
+    """
+    idx = col_idx.get(col_name)
+    if idx is None or idx >= len(row):
+        return ''
+    return row[idx].strip()
 
 
 def update_cell_by_header(sheet_index, row, column_header, value):

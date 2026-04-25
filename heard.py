@@ -1,10 +1,16 @@
 import gspread
-import send_vk_message
+import send_vk
 import time
 from pathlib import Path
 from content_loader import load_content, load_image
 import tg_poster
 import requests
+import datetime
+
+
+def get_formatted_time(date):
+    date = datetime.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+    return date
 
 
 def read_sheet():
@@ -27,43 +33,55 @@ def read_sheet():
 
     while True:
         sheet_data = sheet.get_all_values()
+        now = datetime.datetime.now()
         for i, row in enumerate(sheet_data[1:], start=2):
-            vk = row[3]
-            ok = row[4]
-            tg = row[5]
-            id = row[11]
-            sourse = row[0]
-            picture = row[1]
-            message = load_content(sourse)
+           vk = row[3]
+           ok = row[4]
+           tg = row[5]
+           sourse_text = row[0]
+           sourse_picture = row[1]
+           sourse_time = row[2]
+           sourse_time_delete = row[9]
+           delete = row[10]
+           time = get_formatted_time(sourse_time)
+           message = load_content(sourse_text)
+           picture = load_image(sourse_picture)
 
-            print(
-                f"Строка {i}: vk={vk}, messages={message}, picture={picture}")
 
-            try:
-                if vk == 'TRUE':
-                    post_id = send_vk_message.send_vk_message(message)
-                    sheet.update(f'L{i}', [[post_id]])
-                    sheet.update(f'G{i}', [[status[1]]])
-            except requests.exceptions.RequestException as e:
-                sheet.update(f'G{i}', [[status[3]]])
+           print(f"Строка {i}: vk={vk}, messages={message}, picture={picture}")
 
-            try:
-                if tg == 'TRUE':
-                    post_id = send_text()
-                    sheet.update(f'P{i}', [[post_id]])
-                    sheet.update(f'G{i}', [[status[1]]])
-            except requests.exceptions.RequestException as e:
-                sheet.update(f'I{i}', [[status[3]]])
+           try:
+               if vk == 'TRUE' and time <= now:
+                   post_id = send_vk.send_vk_message(message)
+                   sheet.update(f'L{i}', [[post_id]])
+                   sheet.update(f'G{i}', [[status[1]]])
+                   if delete == 'TRUE':
+                       send_vk.delete_vk_message(post_id)
+                       sheet.update(f'G{i}', [[status[4]]])
 
-            try:
-                if ok == 'TRUE':
-                    post_id = post_to_ok.post_to_ok(message)
-                    sheet.update(f'N{i}', [[post_id]])
-                    sheet.update(f'H{i}', [[status[1]]])
-            except requests.exceptions.RequestException as e:
-                sheet.update(f'H{i}', [[status[3]]])
+               if delete >= now:
+                   send_vk.delete_vk_message(post_id)
+                   sheet.update(f'G{i}', [[status[4]]])
+           except requests.exceptions.RequestException as e:
+               sheet.update(f'G{i}', [[status[3]]])
 
-            time.sleep(60)
+           try:
+               if tg == 'TRUE':
+                   post_id = send_text()
+                   sheet.update(f'P{i}', [[post_id]])
+                   sheet.update(f'G{i}', [[status[1]]])
+           except requests.exceptions.RequestException as e:
+               sheet.update(f'I{i}', [[status[3]]])
+
+           try:
+               if ok == 'TRUE':
+                   post_id = post_to_ok.post_to_ok(message)
+                   sheet.update(f'N{i}', [[post_id]])
+                   sheet.update(f'H{i}', [[status[1]]])
+           except requests.exceptions.RequestException as e:
+               sheet.update(f'H{i}', [[status[3]]])
+
+           time.sleep(60)
 
 
 read_sheet()

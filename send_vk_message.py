@@ -23,8 +23,11 @@ def send_vk_message(message, from_group=1):
     response = requests.get(VK_URL, params=params)
     response.raise_for_status()
     message_data = response.json()
-    post_id = message_data['response']['post_id']
-    return post_id
+    if 'error' in message_data:
+        return 'Ошибка'
+    else:
+        post_id = message_data['response']['post_id']
+        return post_id
 
 
 def send_vk_photo(image_path, message=""):
@@ -60,6 +63,8 @@ def send_vk_photo(image_path, message=""):
 
 
 def delete_vk_message(post_id):
+    method_url = 'https://api.vk.com/method/wall.delete'
+
     params = {
         'access_token': VK_TOKEN,
         'v': VK_API_VERSION,
@@ -68,7 +73,10 @@ def delete_vk_message(post_id):
 
     }
 
-    response = requests.post(VK_URL, params=params)
+    response = requests.post(method_url, params=params)
     response.raise_for_status()
-    return f'Пост {post_id} успешно удален'
+    message_data = response.json()
+    if 'error' in message_data:
+        return 'Ошибка'
+    return 'Удален'
 

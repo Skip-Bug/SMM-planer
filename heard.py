@@ -3,9 +3,8 @@ import send_vk_message
 import time
 from pathlib import Path
 from content_loader import load_content, load_image
-import post_to_ok
 import tg_poster
-
+import requests
 
 def read_sheet():
     '''Функция должна:
@@ -19,7 +18,7 @@ def read_sheet():
     sheet = spreadsheet.sheet1
     status = (
         'Создан',
-        'Отправлено',
+        'Опубликован',
         'Ждет публикации',
         'Ошибка публикации',
         'Удален'
@@ -32,8 +31,9 @@ def read_sheet():
            ok = row[4]
            tg = row[5]
            id = row[11]
-           message = row[0]
+           sourse = row[0]
            picture = row[1]
+           message = load_content(sourse)
 
            print(f"Строка {i}: vk={vk}, messages={message}, picture={picture}")
 
@@ -44,7 +44,7 @@ def read_sheet():
                    sheet.update(f'G{i}', [[status[1]]])
            except requests.exceptions.RequestException as e:
                sheet.update(f'G{i}', [[status[3]]])
-
+               
            try:
                if tg == 'TRUE':
                    post_id = send_text()
@@ -64,13 +64,4 @@ def read_sheet():
            time.sleep(60)
 
 
-
-
 read_sheet()
-<<<<<<< Updated upstream
-
-
-
-
-=======
->>>>>>> Stashed changes

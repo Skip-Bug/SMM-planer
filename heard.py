@@ -47,7 +47,6 @@ def read_sheet():
            message = load_content(sourse_text)
            picture = load_image(sourse_picture)
 
-
            print(f"Строка {i}: vk={vk}, messages={message}, picture={picture}")
 
            try:
@@ -58,10 +57,11 @@ def read_sheet():
                    if delete == 'TRUE':
                        send_vk.delete_vk_message(post_id)
                        sheet.update(f'G{i}', [[status[4]]])
-
-               if delete >= now:
+                       sheet.update(f'L{i}', [['']])
+               if delete <= now:
                    send_vk.delete_vk_message(post_id)
                    sheet.update(f'G{i}', [[status[4]]])
+                   sheet.update(f'L{i}', [['']])
            except requests.exceptions.RequestException as e:
                sheet.update(f'G{i}', [[status[3]]])
 

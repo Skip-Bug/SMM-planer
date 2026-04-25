@@ -42,7 +42,7 @@ def read_sheet():
                    post_id = send_vk_message.send_vk_message(message)
                    sheet.update(f'L{i}', [[post_id]])
                    sheet.update(f'G{i}', [[status[1]]])
-           except Exception as e:
+           except requests.exceptions.RequestException as e:
                sheet.update(f'G{i}', [[status[3]]])
 
            try:
@@ -50,7 +50,7 @@ def read_sheet():
                    post_id = send_text()
                    sheet.update(f'P{i}', [[post_id]])
                    sheet.update(f'G{i}', [[status[1]]])
-           except Exception as e:
+           except requests.exceptions.RequestException as e:
                sheet.update(f'I{i}', [[status[3]]])
 
            try:
@@ -58,7 +58,7 @@ def read_sheet():
                    post_id = post_to_ok.post_to_ok(message)
                    sheet.update(f'N{i}', [[post_id]])
                    sheet.update(f'H{i}', [[status[1]]])
-           except Exception as e:
+           except requests.exceptions.RequestException as e:
                sheet.update(f'H{i}', [[status[3]]])
 
            time.sleep(60)
@@ -67,3 +67,7 @@ def read_sheet():
 
 
 read_sheet()
+
+
+
+

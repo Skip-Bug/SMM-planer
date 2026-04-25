@@ -67,7 +67,10 @@ def read_sheet():
 
 
 read_sheet()
+<<<<<<< Updated upstream
 
 
 
 
+=======
+>>>>>>> Stashed changes

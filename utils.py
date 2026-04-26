@@ -2,7 +2,6 @@
 from datetime import datetime
 
 
-
 DATE_FORMATS = ['%d.%m.%Y %H:%M:%S', '%d.%m.%Y %H:%M', '%d.%m.%Y']
 
 
@@ -23,6 +22,3 @@ def parse_datetime_ru(value):
                 continue
 
     return None
-
-
-

@@ -1,7 +1,7 @@
 """Модуль для постинга и удаления в Telegram-канал."""
 
 
-def send_text(bot, channel_id, text_content):
+def tg_send_text(bot, channel_id, text_content):
     """Отправляет текст в Telegram канал.
 
     Args:
@@ -19,7 +19,7 @@ def send_text(bot, channel_id, text_content):
     return message.message_id
 
 
-def send_image(bot, channel_id, image_path, caption=''):
+def tg_send_image(bot, channel_id, image_path, caption=''):
     """Отправляет изображение в Telegram канал.
 
     Args:
@@ -43,7 +43,7 @@ def send_image(bot, channel_id, image_path, caption=''):
     return message.message_id
 
 
-def delete_message(bot, channel_id, message_id):
+def tg_delete(bot, channel_id, message_id):
     """Удаляет сообщение в Telegram канале.
 
     Args:

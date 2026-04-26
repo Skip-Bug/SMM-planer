@@ -7,7 +7,7 @@ VK_API = "https://api.vk.com/method"
 VK_V = "5.199"
 
 
-def send_text(token, owner_id, message):
+def vk_send_text(token, owner_id, message):
     """Публикует текст на стене.
 
     Args:
@@ -42,7 +42,7 @@ def send_text(token, owner_id, message):
     return data['response']['post_id']
 
 
-def send_image(token, owner_id, image_path, caption=''):
+def vk_send_image(token, owner_id, image_path, caption=''):
     """Публикует изображение через официальный flow VK.
 
     Flow: getWallUploadServer → upload → saveWallPhoto → wall.post
@@ -113,7 +113,7 @@ def send_image(token, owner_id, image_path, caption=''):
     return data['response']['post_id']
 
 
-def delete_message(token, owner_id, post_id):
+def vk_delete(token, owner_id, post_id):
     """Удаляет пост со стены.
 
     Args:

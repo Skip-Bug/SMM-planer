@@ -30,16 +30,13 @@ def replaced_dashes(line):
     Returns:
         str: Строка с правильными тире.
     """
-    # Диапазоны чисел
     line = re.sub(r'(\d+)\s*-\s*(\d+)', r'\1–\2', line)
-    # Инициалы: А. - Б. -> А. Б. (убираем дефис)
     line = re.sub(r'(\b[А-Яа-я]\.)\s+-\s+([А-Яа-я]\.\b)', r'\1 \2', line)
-    # Обычное длинное тире для остальных случаев
     line = re.sub(r'\s+[-–—]\s+', ' — ', line)
     return line
 
 
-def frag_alt_quotes(fragment):
+def frag_alt_quotes(fragment, punct_inside=True):
     """Заменяет прямые кавычки " и ' на « и » с учётом вложенности.
 
     Использует стек для отслеживания уровней цитирования.
@@ -63,18 +60,22 @@ def frag_alt_quotes(fragment):
             continue
         prev_char = fragment[i-1] if i > 0 else ''
         next_char = fragment[i+1] if i+1 < n else ''
-        prev_is_word = prev_char.isalnum()
+        prev_is_word = prev_char.isalnum() or prev_char in ('.', '!', '?')
         next_is_word = next_char.isalnum()
 
         if not prev_is_word and next_is_word:
             result.append('«')
             stack.append(True)
         elif prev_is_word and not next_is_word:
-            if stack:
-                result.append('»')
-                stack.pop()
+            # Если перед закрывающей кавычкой стоит знак и хотим его внутрь
+            if stack and punct_inside and prev_char in ('.', '!', '?'):
+                # Меняем местами: знак препинания и кавычка
+                punct = result.pop()
+                result.append(f'{punct}»')
             else:
                 result.append('»')
+            if stack:
+                stack.pop()
         else:
             if stack:
                 result.append('»')
@@ -97,7 +98,7 @@ def format_quoted_line(spaces, body, tail, punct_inside):
     Returns:
         str: Отформатированная строка с кавычками.
     """
-    inner = frag_alt_quotes(body)
+    inner = frag_alt_quotes(body, punct_inside)
     end_punct = re.search(r'([.!?]+)$', inner)
     if end_punct and punct_inside:
         punct = end_punct.group(1)
@@ -131,8 +132,7 @@ def try_wrap_quotes(line, punct_inside):
 
 
 def clean_text(raw_text, punct_inside_quotes=True):
-    """Приводит текст к типографски аккуратному.
-
+    """
     Приводит текст к типографски аккуратному виду для SMM‑постов.
 
     Аргументы:
@@ -145,10 +145,6 @@ def clean_text(raw_text, punct_inside_quotes=True):
     Возвращает:
         str: Текст с «ёлочками», длинным тире (—),
         коротким тире для диапазонов (10–20) и нормализованными пробелами.
-
-    Примеры:
-        >>> clean_text('Привет "мир"')
-        'Привет «мир»'
     """
     if not raw_text:
         return ""
@@ -166,7 +162,9 @@ def clean_text(raw_text, punct_inside_quotes=True):
         if wrapped is not None:
             processed_lines.append(wrapped)
         else:
-            processed_lines.append(frag_alt_quotes(rep_dash))
+            processed_lines.append(
+                frag_alt_quotes(rep_dash, punct_inside_quotes)
+            )
 
     return '\n'.join(processed_lines).strip()
 

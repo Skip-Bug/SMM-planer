@@ -6,7 +6,19 @@ from content_loader import load_content, load_image
 import tg_poster
 import requests
 import datetime
-from post_to_ok import post_to_ok
+import post_to_ok
+from dotenv import load_dotenv
+import os
+from telegram import Bot
+
+load_dotenv()
+
+TG_BOT = os.environ["TG_BOT_TOKEN"]
+TG_CHANNEL_ID = os.environ['TG_CHANNEL_ID']
+OK_TOKEN = os.environ['OK_TOKEN']
+OK_SECRET_KEY = os.environ['OK_SECRET_KEY']
+OK_GROUP_ID = os.environ['OK_GROUP_ID']
+OK_APPLICATION_KEY = os.environ['OK_APPLICATION_KEY']
 
 
 def get_formatted_time(date):
@@ -23,7 +35,7 @@ def read_sheet():
     3. Отправить данные из таблицы
     4. Вернуть id поста и статус '''
     gc = gspread.service_account(filename='credentials.json')
-    spreadsheet_id = '19oRm83_XQWaSwP47WaTtVeItYi5T4lgO8UNmaxupwt4'
+    spreadsheet_id = os.environ['SPREADSHEET_ID']
     spreadsheet = gc.open_by_key(spreadsheet_id)
     sheet = spreadsheet.sheet1
     status = (
@@ -33,7 +45,7 @@ def read_sheet():
         'Ошибка публикации',
         'Удален'
     )
-
+    tg_bot = Bot(TG_BOT)
     while True:
         sheet_data = sheet.get_all_values()
         now = datetime.datetime.now()
@@ -79,21 +91,21 @@ def read_sheet():
            try:
                if tg == 'TRUE' or time and time <= now:
                    if picture:
-                       post_id = send_image(picture)
+                       post_id = send_image(tg_bot,TG_CHANNEL_ID, picture)
                        sheet.update(f'P{i}', [[post_id]])
                        sheet.update(f'P{i}', [[status[1]]])
                    else:
-                       post_id = send_text(message)
+                       post_id = send_text(tg_bot, TG_CHANNEL_ID, message)
                        sheet.update(f'P{i}', [[post_id]])
                        sheet.update(f'G{i}', [[status[1]]])
                    if delete == 'TRUE':
-                       tg_poster.delete_message(post_id)
+                       tg_poster.delete_message(tg_bot, TG_CHANNEL_ID, post_id)
                        sheet.update(f'G{i}', [[status[4]]])
                        sheet.update(f'L{i}', [['']])
                if sourse_time_delete:
                    time_delete = get_formatted_time(sourse_time_delete)
                    if time_delete <= now:
-                       tg_poster.delete_message(post_id)
+                       tg_poster.delete_message(tg_bot, TG_CHANNEL_ID, post_id)
                        sheet.update(f'G{i}', [[status[4]]])
                        sheet.update(f'L{i}', [['']])
 
@@ -127,4 +139,5 @@ def read_sheet():
 
 
 read_sheet()
+
 

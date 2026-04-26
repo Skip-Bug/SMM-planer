@@ -40,7 +40,7 @@ def post_to_ok(text):
 	response = requests.post(ok_url, data=params)
 	return response.json()
 
-def post_to_photo(photo_path, text=''):
+def post_to_photo(image_path, text=''):
 
 	params = {
 	    'mathod': 'photosV2.getUploadUrl',
@@ -57,7 +57,7 @@ def post_to_photo(photo_path, text=''):
 	if 'upload_url' not in data:
 		raise Exception(f"Ошибка: {data}")
 
-	with open(photo_path, 'rb') as photo_file:
+	with open(image_path, 'rb') as photo_file:
 		files = {'file': photo_file}
 		upload_response = requests.post(data['upload_url'], files=files)
 		upload_data = upload_response.json()

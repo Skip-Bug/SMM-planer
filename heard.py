@@ -3,15 +3,14 @@ import send_vk
 import time
 from pathlib import Path
 from content_loader import load_content, load_image
-import tg_poster
+from tg_poster import send_text, send_image
 import requests
 import datetime
-import post_to_ok
+from post_to_ok import post_to_ok, post_to_photo, delete_post
 from dotenv import load_dotenv
 import os
 from telegram import Bot
 
-load_dotenv()
 
 TG_BOT = os.environ["TG_BOT_TOKEN"]
 TG_CHANNEL_ID = os.environ['TG_CHANNEL_ID']
@@ -28,12 +27,8 @@ def get_formatted_time(date):
     return date
 
 
-def read_sheet():
-    '''Функция должна:
-    1. открыть таблицу
-    2. Читать из нее данные
-    3. Отправить данные из таблицы
-    4. Вернуть id поста и статус '''
+def main():
+    load_dotenv()
     gc = gspread.service_account(filename='credentials.json')
     spreadsheet_id = os.environ['SPREADSHEET_ID']
     spreadsheet = gc.open_by_key(spreadsheet_id)
@@ -45,7 +40,7 @@ def read_sheet():
         'Ошибка публикации',
         'Удален'
     )
-    tg_bot = Bot(TG_BOT)
+    tg_bot = Bot(token=TG_BOT)
     while True:
         sheet_data = sheet.get_all_values()
         now = datetime.datetime.now()
@@ -70,7 +65,7 @@ def read_sheet():
                        post_id = send_vk.send_vk_photo(picture, message)
                    else:
                        post_id = send_vk.send_vk_message(message)
-                   sheet.update(f'L{i}', [[post_id]])
+                   sheet.update(f'M{i}', [[post_id]])
                    sheet.update(f'G{i}', [[status[1]]])
 
                    if delete == 'TRUE':
@@ -93,21 +88,21 @@ def read_sheet():
                    if picture:
                        post_id = send_image(tg_bot,TG_CHANNEL_ID, picture)
                        sheet.update(f'P{i}', [[post_id]])
-                       sheet.update(f'P{i}', [[status[1]]])
+                       sheet.update(f'I{i}', [[status[1]]])
                    else:
                        post_id = send_text(tg_bot, TG_CHANNEL_ID, message)
                        sheet.update(f'P{i}', [[post_id]])
-                       sheet.update(f'G{i}', [[status[1]]])
+                       sheet.update(f'I{i}', [[status[1]]])
                    if delete == 'TRUE':
                        tg_poster.delete_message(tg_bot, TG_CHANNEL_ID, post_id)
-                       sheet.update(f'G{i}', [[status[4]]])
-                       sheet.update(f'L{i}', [['']])
+                       sheet.update(f'I{i}', [[status[4]]])
+                       sheet.update(f'P{i}', [['']])
                if sourse_time_delete:
                    time_delete = get_formatted_time(sourse_time_delete)
                    if time_delete <= now:
                        tg_poster.delete_message(tg_bot, TG_CHANNEL_ID, post_id)
-                       sheet.update(f'G{i}', [[status[4]]])
-                       sheet.update(f'L{i}', [['']])
+                       sheet.update(f'I{i}', [[status[4]]])
+                       sheet.update(f'P{i}', [['']])
 
            except requests.exceptions.RequestException as e:
                sheet.update(f'I{i}', [[status[3]]])
@@ -116,28 +111,28 @@ def read_sheet():
                if ok == 'TRUE' or time and time <= now:
                    if picture:
                        post_id = post_to_photo(picture)
-                       sheet.update(f'P{i}', [[post_id]])
-                       sheet.update(f'P{i}', [[status[1]]])
+                       sheet.update(f'N{i}', [[post_id]])
+                       sheet.update(f'H{i}', [[status[1]]])
                    else:
                        post_id = post_to_ok(message)
-                       sheet.update(f'P{i}', [[post_id]])
-                       sheet.update(f'G{i}', [[status[1]]])
+                       sheet.update(f'N{i}', [[post_id]])
+                       sheet.update(f'H{i}', [[status[1]]])
                    if delete == 'TRUE':
                        post_to_ok.delete_post(post_id)
-                       sheet.update(f'G{i}', [[status[4]]])
-                       sheet.update(f'L{i}', [['']])
+                       sheet.update(f'H{i}', [[status[4]]])
+                       sheet.update(f'N{i}', [['']])
                if sourse_time_delete:
                    time_delete = get_formatted_time(sourse_time_delete)
                    if time_delete <= now:
                        post_to_ok.delete_post(post_id)
-                       sheet.update(f'G{i}', [[status[4]]])
-                       sheet.update(f'L{i}', [['']])
+                       sheet.update(f'H{i}', [[status[4]]])
+                       sheet.update(f'N{i}', [['']])
            except requests.exceptions.RequestException as e:
                sheet.update(f'H{i}', [[status[3]]])
 
            time.sleep(60)
 
 
-read_sheet()
-
+if __name__ == 'main':
+    main()
 

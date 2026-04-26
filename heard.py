@@ -9,6 +9,8 @@ import datetime
 
 
 def get_formatted_time(date):
+    if not date or date == '':
+        return None
     date = datetime.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
     return date
 
@@ -38,11 +40,11 @@ def read_sheet():
            vk = row[3]
            ok = row[4]
            tg = row[5]
+           delete = row[10]
            sourse_text = row[0]
            sourse_picture = row[1]
            sourse_time = row[2]
            sourse_time_delete = row[9]
-           delete = row[10]
            time = get_formatted_time(sourse_time)
            message = load_content(sourse_text)
            picture = load_image(sourse_picture)
@@ -50,34 +52,63 @@ def read_sheet():
            print(f"Строка {i}: vk={vk}, messages={message}, picture={picture}")
 
            try:
-               if vk == 'TRUE' and time <= now:
-                   post_id = send_vk.send_vk_message(message)
+               if vk == 'TRUE' or time and time <= now:
+                   if picture:
+                       post_id = send_vk.send_vk_photo(picture, message)
+                   else:
+                       post_id = send_vk.send_vk_message(message)
                    sheet.update(f'L{i}', [[post_id]])
+                   sheet.update(f'G{i}', [[status[1]]])
+
+                   if delete == 'TRUE':
+                       send_vk.delete_vk_message(post_id)
+                       sheet.update(f'G{i}', [[status[4]]])
+                       sheet.update(f'L{i}', [['']])
+
+               if sourse_time_delete:
+                   time_delete = get_formatted_time(sourse_time_delete)
+                   if time_delete <= now:
+                       send_vk.delete_vk_message(post_id)
+                       sheet.update(f'G{i}', [[status[4]]])
+                       sheet.update(f'L{i}', [['']])
+
+           except requests.exceptions.RequestException as e:
+               sheet.update(f'G{i}', [[status[3]]])
+
+           try:
+               if tg == 'TRUE' or time and time <= now:
+                   post_id = send_text()
+                   sheet.update(f'P{i}', [[post_id]])
                    sheet.update(f'G{i}', [[status[1]]])
                    if delete == 'TRUE':
                        send_vk.delete_vk_message(post_id)
                        sheet.update(f'G{i}', [[status[4]]])
                        sheet.update(f'L{i}', [['']])
-               if delete <= now:
-                   send_vk.delete_vk_message(post_id)
-                   sheet.update(f'G{i}', [[status[4]]])
-                   sheet.update(f'L{i}', [['']])
-           except requests.exceptions.RequestException as e:
-               sheet.update(f'G{i}', [[status[3]]])
+               if sourse_time_delete:
+                   time_delete = get_formatted_time(sourse_time_delete)
+                   if time_delete <= now:
+                       send_vk.delete_vk_message(post_id)
+                       sheet.update(f'G{i}', [[status[4]]])
+                       sheet.update(f'L{i}', [['']])
 
-           try:
-               if tg == 'TRUE':
-                   post_id = send_text()
-                   sheet.update(f'P{i}', [[post_id]])
-                   sheet.update(f'G{i}', [[status[1]]])
            except requests.exceptions.RequestException as e:
                sheet.update(f'I{i}', [[status[3]]])
 
            try:
-               if ok == 'TRUE':
+               if ok == 'TRUE' or time and time <= now:
                    post_id = post_to_ok.post_to_ok(message)
                    sheet.update(f'N{i}', [[post_id]])
                    sheet.update(f'H{i}', [[status[1]]])
+                   if delete == 'TRUE':
+                       send_vk.delete_vk_message(post_id)
+                       sheet.update(f'G{i}', [[status[4]]])
+                       sheet.update(f'L{i}', [['']])
+               if sourse_time_delete:
+                   time_delete = get_formatted_time(sourse_time_delete)
+                   if time_delete <= now:
+                       send_vk.delete_vk_message(post_id)
+                       sheet.update(f'G{i}', [[status[4]]])
+                       sheet.update(f'L{i}', [['']])
            except requests.exceptions.RequestException as e:
                sheet.update(f'H{i}', [[status[3]]])
 

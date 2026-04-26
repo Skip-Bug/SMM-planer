@@ -34,96 +34,43 @@ POLL_INTERVAL = 60
 
 # ------------------- ПУБЛИКАЦИЯ В TELEGRAM -------------------
 def publish_tg(bot, channel_id, text, img_path=None):
-    """Публикует в Telegram."""
-    try:
-        if img_path:
-            message_id = tg_send_image(bot, channel_id, img_path, caption=text)
-        else:
-            message_id = tg_send_text(bot, channel_id, text)
-        return {
-            'TG Статус': STATUS['PUBLISHED'],
-            'TG id поста': str(message_id)
-        }
-    except (BadRequest, TimedOut, Unauthorized) as e:
-        return {
-            'TG Статус': STATUS['ERROR'],
-            'TG id поста': '',
-            'TG error': f'API error: {e}'
-        }
-    except NetworkError as e:
-        return {
-            'TG Статус': STATUS['ERROR'],
-            'TG id поста': '',
-            'TG error': f'Network error: {e}'
-        }
-    except Exception as e:
-        return {
-            'TG Статус': STATUS['ERROR'],
-            'TG id поста': '',
-            'TG error': f'Unexpected error: {e}'
-        }
+    """Публикует в Telegram. Возвращает (message_id, error)."""
+    if img_path:
+        return tg_send_image(bot, channel_id, img_path, caption=text)
+    else:
+        return tg_send_text(bot, channel_id, text)
 
 
 # ------------------- ПУБЛИКАЦИЯ В VK -------------------
 def publish_vk(token, owner, text, img_path=None):
-    """Публикует в VK. Возвращает словарь для обновления таблицы."""
-    try:
-        if img_path:
-            post_id = vk_send_image(token, owner, img_path, caption=text)
-        else:
-            post_id = vk_send_text(token, owner, text)
-        return {
-            'VK Статус': STATUS['PUBLISHED'],
-            'VK id поста': str(post_id)
-        }
-    except requests.RequestException as e:
-        return {
-            'VK Статус': STATUS['ERROR'],
-            'VK id поста': '',
-            'VK error': f'API error: {e}'
-        }
-    except Exception as e:
-        return {
-            'VK Статус': STATUS['ERROR'],
-            'VK id поста': '',
-            'VK error': f'Unexpected error: {e}'
-        }
+    """Публикует в VK. Возвращает post_id."""
+    if img_path:
+        return vk_send_image(token, owner, img_path, caption=text)
+    else:
+        return vk_send_text(token, owner, text)
 
 
 # -------------------- ПУБЛИКАЦИЯ В OK -----------------------
 
 
-def publish_ok(text, img_path=None):
-    """Публикует в OK.ru. Возвращает словарь для обновления таблицы."""
-    try:
-        if img_path:
-            result = ok_send_image(str(img_path), text)
-        else:
-            result = ok_send_text(text)
-
-        if result and 'id' in result:
-            return {
-                'OK Статус': STATUS['PUBLISHED'],
-                'OK id поста': str(result['id'])
-            }
-        else:
-            return {
-                'OK Статус': STATUS['ERROR'],
-                'OK id поста': '',
-                'OK error': f'API error: {result}'
-            }
-    except requests.RequestException as e:
-        return {
-            'OK Статус': STATUS['ERROR'],
-            'OK id поста': '',
-            'OK error': f'API error: {e}'
-        }
-    except Exception as e:
-        return {
-            'OK Статус': STATUS['ERROR'],
-            'OK id поста': '',
-            'OK error': f'Unexpected error: {e}'
-        }
+def publish_ok(
+        text, access_token, application_key,
+        group_id, secret_key, img_path=None
+):
+    """Публикует в OK.ru. Возвращает dict с id."""
+    if img_path:
+        result = ok_send_image(
+            image_path=str(img_path), text=text,
+            access_token=access_token, application_key=application_key,
+            group_id=group_id, secret_key=secret_key
+        )
+    else:
+        result = ok_send_text(
+            text=text, access_token=access_token,
+            application_key=application_key, group_id=group_id,
+            secret_key=secret_key
+        )
+    return result
 
 
 # ------------------- ОБРАБОТКА ОДНОЙ СТРОКИ -------------------
@@ -131,7 +78,9 @@ def process_row(
     row, row_num, col_idx,
     now, tg_bot, tg_channel,
     vk_token, vk_owner_int,
-    ok_enabled
+    ok_enabled,
+    ok_access_token, ok_app_key,
+    ok_group_id, ok_secret_key
 ):
     """Обработка одной строки: удаление → публикация → очистка."""
     img_path = None
@@ -151,12 +100,13 @@ def process_row(
             if tg_bot and tg_channel and tg_id and tg_not_del:
                 try:
                     tg_delete(tg_bot, tg_channel, tg_id)
-                    batch_update_by_headers(
-                        0, row_num, {'TG Статус': STATUS['DELETED']})
-                    print(f'   🗑️ Строка {row_num}: TG удален')
+                    batch_update_by_headers(0, row_num, {
+                        'TG Статус': STATUS['DELETED'],
+                        'TG id поста': ''
+                    })
+                    print(f'   🗑️ Строка {row_num}: TG удален (ID: {tg_id})')
                 except Exception as e:
-                    print(
-                        f'Строка {row_num}:TG ошибка удаления/обновления:{e}')
+                    print(f'Строка {row_num}: TG ошибка удаления/обновления: {e}')
 
             # --- VKONTAKTE (один ID на весь пост) ---
             vk_status = get_field(row, col_idx, 'VK Статус')
@@ -165,13 +115,13 @@ def process_row(
             if vk_token and vk_owner_int and vk_id and vk_not_del:
                 try:
                     vk_delete(vk_token, vk_owner_int, vk_id)
-                    batch_update_by_headers(
-                        0, row_num, {'VK Статус': STATUS['DELETED']})
-                    print(f'   🗑️ Строка {row_num}: VK удален')
+                    batch_update_by_headers(0, row_num, {
+                        'VK Статус': STATUS['DELETED'],
+                        'VK id поста': ''
+                    })
+                    print(f'   🗑️ Строка {row_num}: VK удален (ID: {vk_id})')
                 except Exception as e:
-                    print(
-                        f'Строка {row_num}: VK ошибка удаления/обновления: {e}'
-                    )
+                    print(f'Строка {row_num}: VK ошибка удаления/обновления: {e}')
 
             # --- OK.ru ---
             ok_status = get_field(row, col_idx, 'OK Статус')
@@ -179,10 +129,13 @@ def process_row(
             ok_not_del = ok_status != STATUS['DELETED']
             if ok_enabled and ok_id and ok_not_del:
                 try:
-                    ok_delete(ok_id)
-                    batch_update_by_headers(
-                        0, row_num, {'OK Статус': STATUS['DELETED']})
-                    print(f'   🗑️ Строка {row_num}: OK.ru удален')
+                    ok_delete(ok_id, ok_access_token, ok_app_key,
+                              ok_group_id, ok_secret_key)
+                    batch_update_by_headers(0, row_num, {
+                        'OK Статус': STATUS['DELETED'],
+                        'OK id поста': ''
+                    })
+                    print(f'   🗑️ Строка {row_num}: OK.ru удален (ID: {ok_id})')
                 except Exception as e:
                     err_msg = f'OK.ru ошибка удаления/обновления: {e}'
                     print(f'Строка {row_num}: {err_msg}')
@@ -257,33 +210,83 @@ def process_row(
             return
         # 🔹 5. Публикация TG
         if tg_bot and tg_channel and tg_flag and tg_not_ready:
-            updates = publish_tg(tg_bot, tg_channel, clear_text, img_path)
-            batch_update_by_headers(0, row_num, updates)
-            if updates.get('TG Статус') == STATUS['PUBLISHED']:
-                print(f'   ✅ Строка {row_num}: TG опубликован')
-            else:
-                err = updates.get('TG error', 'Unknown error')
-                print(f'   ❌ Строка {row_num}: TG ошибка: {err}')
+            try:
+                post_id = publish_tg(
+                    tg_bot, tg_channel, clear_text, img_path)
+
+                if post_id:
+                    updates = {
+                        'TG Статус': STATUS['PUBLISHED'],
+                        'TG id поста': str(post_id)
+                    }
+                    batch_update_by_headers(0, row_num, updates)
+                    print(
+                        f'   ✅ Строка {row_num}: TG опубликован (ID: {post_id})')
+                else:
+                    updates = {'TG Статус': STATUS['ERROR'], 'TG id поста': ''}
+                    batch_update_by_headers(0, row_num, updates)
+                    print(f'   ❌ Строка {row_num}: TG ошибка - ID не найден')
+            except (BadRequest, TimedOut, Unauthorized) as e:
+                updates = {'TG Статус': STATUS['ERROR'], 'TG id поста': ''}
+                batch_update_by_headers(0, row_num, updates)
+                err = f'TG API ошибка: {e}'
+                print(f'Строка {row_num}: {err}')
+            except NetworkError as e:
+                updates = {'TG Статус': STATUS['ERROR'], 'TG id поста': ''}
+                batch_update_by_headers(0, row_num, updates)
+                err = f'TG сетевая ошибка: {e}'
+                print(f'Строка {row_num}: {err}')
 
         # 🔹 6. Публикация VK
         if vk_token and vk_owner_int and vk_flag and vk_not_ready:
-            updates = publish_vk(vk_token, vk_owner_int, clear_text, img_path)
-            batch_update_by_headers(0, row_num, updates)
-            if updates.get('VK Статус') == STATUS['PUBLISHED']:
-                print(f'   ✅ Строка {row_num}: VK опубликован')
-            else:
-                err = updates.get('VK error', 'Unknown error')
-                print(f'   ❌ Строка {row_num}: VK ошибка: {err}')
+            try:
+                post_id = publish_vk(
+                    vk_token, vk_owner_int, clear_text, img_path)
+
+                if post_id:
+                    updates = {
+                        'VK Статус': STATUS['PUBLISHED'],
+                        'VK id поста': str(post_id)
+                    }
+                    batch_update_by_headers(0, row_num, updates)
+                    print(
+                        f'   ✅ Строка {row_num}: VK опубликован (ID: {post_id})')
+                else:
+                    updates = {'VK Статус': STATUS['ERROR'], 'VK id поста': ''}
+                    batch_update_by_headers(0, row_num, updates)
+                    print(f'   ❌ Строка {row_num}: VK ошибка - ID не найден')
+            except requests.RequestException as e:
+                updates = {'VK Статус': STATUS['ERROR'], 'VK id поста': ''}
+                batch_update_by_headers(0, row_num, updates)
+                err = f'VK API ошибка: {e}'
+                print(f'Строка {row_num}: {err}')
 
         # 🔹 7. Публикация OK.ru
         if ok_enabled and ok_flag and ok_not_ready:
-            updates = publish_ok(clear_text, img_path)
-            batch_update_by_headers(0, row_num, updates)
-            if updates.get('OK Статус') == STATUS['PUBLISHED']:
-                print(f'   ✅ Строка {row_num}: OK.ru опубликован')
-            else:
-                err = updates.get('OK error', 'Unknown error')
-                print(f'   ❌ Строка {row_num}: OK.ru ошибка: {err}')
+            try:
+                post_id = publish_ok(
+                    clear_text, ok_access_token, ok_app_key,
+                    ok_group_id, ok_secret_key, img_path
+                )
+
+                if post_id:
+                    updates = {
+                        'OK Статус': STATUS['PUBLISHED'],
+                        'OK id поста': str(post_id)
+                    }
+                    batch_update_by_headers(0, row_num, updates)
+                    print(
+                        f'   ✅ Строка {row_num}: OK.ru опубликован (ID: {post_id})')
+                else:
+                    updates = {'OK Статус': STATUS['ERROR'], 'OK id поста': ''}
+                    batch_update_by_headers(0, row_num, updates)
+                    print(
+                        f'   ❌ Строка {row_num}: OK.ru API ошибка - ID не найден')
+            except requests.RequestException as e:
+                updates = {'OK Статус': STATUS['ERROR'], 'OK id поста': ''}
+                batch_update_by_headers(0, row_num, updates)
+                err = f'OK.ru API ошибка: {e}'
+                print(f'Строка {row_num}: {err}')
 
     except Exception as e:
         print(f'   ⚠️ Строка {row_num}: критическая ошибка: {e}')
@@ -305,10 +308,10 @@ def main():
     tg_channel = os.getenv('TG_CHANNEL_ID')
     vk_token = os.getenv('VK_KEY')
     vk_owner_raw = os.getenv('VK_GROUP_ID')
-    ok_app_key = os.getenv('APPLICATION_KEY')
-    ok_access_token = os.getenv('ACCESS_TOKEN')
-    ok_secret_key = os.getenv('SECRET_KEY')
-    ok_group_id = os.getenv('GROUP_ID')
+    ok_app_key = os.getenv('OK_APPLICATION_KEY')
+    ok_access_token = os.getenv('OK_ACCESS_TOKEN')
+    ok_secret_key = os.getenv('OK_SECRET_KEY')
+    ok_group_id = os.getenv('OK_GROUP_ID')
 
     ok_enabled = all([
         ok_app_key, ok_access_token,
@@ -355,7 +358,8 @@ def main():
                     col_idx, now,
                     tg_bot, tg_channel,
                     vk_token, vk_owner_int,
-                    ok_enabled
+                    ok_enabled, ok_access_token, ok_app_key,
+                    ok_group_id, ok_secret_key
                 )
 
             print(f'✅ Цикл завершён. Сон {POLL_INTERVAL}с...')

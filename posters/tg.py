@@ -15,7 +15,9 @@ def tg_send_text(bot, channel_id, text_content):
     Raises:
         telegram.error.TelegramError: При проблемах с отправкой.
     """
-    message = bot.send_message(chat_id=channel_id, text=text_content)
+    message = bot.send_message(
+        chat_id=channel_id, text=text_content, timeout=20
+    )
     return message.message_id
 
 
@@ -38,7 +40,8 @@ def tg_send_image(bot, channel_id, image_path, caption=''):
         message = bot.send_photo(
             chat_id=channel_id,
             photo=image_file,
-            caption=caption
+            caption=caption,
+            timeout=20
         )
     return message.message_id
 
@@ -57,5 +60,7 @@ def tg_delete(bot, channel_id, message_id):
     Raises:
         telegram.error.TelegramError: При проблемах с удалением.
     """
-    bot.delete_message(chat_id=channel_id, message_id=message_id)
+    bot.delete_message(
+        chat_id=channel_id, message_id=message_id, timeout=20
+    )
     return True

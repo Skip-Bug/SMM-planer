@@ -33,7 +33,7 @@ def vk_send_text(token, owner_id, message):
             'message': message,
             'from_group': 1
         },
-        timeout=30
+        timeout=20
     )
     resp.raise_for_status()
     data = resp.json()
@@ -68,13 +68,13 @@ def vk_send_image(token, owner_id, image_path, caption=''):
     resp = requests.post(
         f"{VK_API}/photos.getWallUploadServer",
         data={'access_token': token, 'owner_id': owner_id, 'v': VK_V},
-        timeout=30
+        timeout=20
     )
     resp.raise_for_status()
     upload_url = resp.json()['response']['upload_url']
 
     with open(path, 'rb') as f:
-        resp = requests.post(upload_url, files={'photo': f}, timeout=60)
+        resp = requests.post(upload_url, files={'photo': f}, timeout=20)
         resp.raise_for_status()
         upload_data = resp.json()
 
@@ -88,7 +88,7 @@ def vk_send_image(token, owner_id, image_path, caption=''):
             'photo': upload_data['photo'],
             'hash': upload_data['hash']
         },
-        timeout=30
+        timeout=20
     )
     resp.raise_for_status()
     saved = resp.json()['response'][0]
@@ -104,7 +104,7 @@ def vk_send_image(token, owner_id, image_path, caption=''):
             'attachments': attachment,
             'from_group': 1
         },
-        timeout=30
+        timeout=20
     )
     resp.raise_for_status()
     data = resp.json()
@@ -135,7 +135,7 @@ def vk_delete(token, owner_id, post_id):
             'v': VK_V,
             'post_id': post_id
         },
-        timeout=30
+        timeout=20
     )
     resp.raise_for_status()
     data = resp.json()

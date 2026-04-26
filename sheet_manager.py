@@ -9,15 +9,15 @@ from google.oauth2.service_account import Credentials
 load_dotenv()
 
 
-DEFAULT_SHEET_INDEX = 0
-DEFAULT_CREDENTIALS = 'credentials.json'
+SHEET_INDEX = 0
+CREDENTIALS = 'credentials.json'
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
 
 
-def get_worksheet(sheet_index=DEFAULT_SHEET_INDEX, spreadsheet_id=None,
+def get_worksheet(sheet_index=SHEET_INDEX, spreadsheet_id=None,
                   credentials_path=None):
     """Возвращает объект worksheet (лист) по индексу.
 
@@ -36,7 +36,7 @@ def get_worksheet(sheet_index=DEFAULT_SHEET_INDEX, spreadsheet_id=None,
     if spreadsheet_id is None:
         spreadsheet_id = os.getenv('SPREADSHEET_ID')
     if credentials_path is None:
-        credentials_path = os.getenv('CREDENTIALS_PATH', DEFAULT_CREDENTIALS)
+        credentials_path = os.getenv('CREDENTIALS_PATH', CREDENTIALS)
 
     if not spreadsheet_id:
         raise ValueError('Не указан ID таблицы (SPREADSHEET_ID в .env)')
@@ -55,7 +55,7 @@ def get_worksheet(sheet_index=DEFAULT_SHEET_INDEX, spreadsheet_id=None,
     return spreadsheet.get_worksheet(sheet_index)
 
 
-def get_rows_with_numbers(sheet_index=DEFAULT_SHEET_INDEX):
+def get_rows_with_numbers(sheet_index=SHEET_INDEX):
     """Возвращает данные с номерами строк для обновления.
 
     Returns:

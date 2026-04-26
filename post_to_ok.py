@@ -43,7 +43,7 @@ def post_to_ok(text):
 def post_to_photo(image_path, text=''):
 
 	params = {
-	    'mathod': 'photosV2.getUploadUrl',
+	    'method': 'photosV2.getUploadUrl',
 	    'application_key': APPLICATION_KEY,
 	    'access_token': ACCESS_TOKEN,
 	    'format': 'json',

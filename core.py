@@ -22,7 +22,11 @@ from utils import parse_datetime_ru
 from vk_poster import delete_message as vk_delete
 from vk_poster import send_image as vk_send_image
 from vk_poster import send_text as vk_send_text
-
+from post_to_ok import (
+    post_to_ok,
+    post_to_photo,
+    delete_post
+    )
 # ------------------- КОНСТАНТЫ -------------------
 STATUS = {
     'PUBLISHED': 'Опубликован',
@@ -58,13 +62,33 @@ def publish_vk(token, owner, text, img_path=None):
         'VK Статус': STATUS['PUBLISHED'],
         'VK id поста': str(post_id)
     }
+# -------------------- ПУБЛИКАЦИЯ В OK -----------------------
+
+
+def publish_ok(text, img_path=None):
+    if img_path:
+        result = post_to_photo(str(img_path), text)
+    else:
+        result = post_to_ok(text)
+
+    if result and 'id' in result:
+        return {
+            'OK Статус': STATUS['PUBLISHED'],
+            'OK id поста': str(result['id'])
+        }
+    else:
+        return {
+            'OK Статус': STATUS['ERROR'],
+            'OK id поста': ''
+        }
 
 
 # ------------------- ОБРАБОТКА ОДНОЙ СТРОКИ -------------------
 def process_row(
     row, row_num, col_idx,
     now, tg_bot, tg_channel,
-    vk_token, vk_owner_int
+    vk_token, vk_owner_int,
+    ok_token
 ):
     """Обработка одной строки: удаление → публикация → очистка."""
     img_path = None
@@ -105,6 +129,9 @@ def process_row(
                     print(
                         f'Строка {row_num}: VK ошибка удаления/обновления: {e}'
                     )
+
+
+<< << << < HEAD
             return
 
         pub_time = parse_datetime_ru(
@@ -126,6 +153,23 @@ def process_row(
 
             if updates:
                 batch_update_by_headers(0, row_num, updates)
+            return  # 🛑 Удаление сработало. Публикацию пропускаем.
+          
+            ok_status = get_field(row, col_idx, 'OK Статус')
+            ok_id = get_field(row, col_idx, 'OK id поста')
+            ok_not_delet = ok_status != STATUS['DELETED']
+            if ok_token and ok_id and ok_not_delet:
+                try:
+                    result = delete_post(ok_id)
+                    if result and 'error_code' not in result:
+                        batch_update_by_headers(
+                            0, row_num, {'OK Статус': STATUS['DELETED']})
+                        print(f'   🗑️ Строка {row_num}: OK.ru удален')
+                    else:
+                        print(f'   ⚠️ Строка {row_num}: OK.ru ошибка удаления: {result}')
+                except Exception as e:
+                    print(f'Строка {row_num}: OK.ru ошибка удаления: {e}')
+
             return
 
         text_raw = get_field(row, col_idx, 'Пост')
@@ -136,12 +180,30 @@ def process_row(
         clear_text = clean_text(not_format_text)
         img_path = load_image(get_field(row, col_idx, 'Картинка'))
 
+        # 🔹 3. Проверка времени публикации
+        pub_time = parse_datetime_ru(
+            get_field(row, col_idx, 'Дата публикации')
+        )
+        if pub_time and pub_time > now:
+            time_pub = pub_time.strftime("%d.%m.%Y %H:%M")
+            print(
+                f'⏭️ Строка {row_num}: пропуск (дата: {time_pub})')
+
+            return
+
+        # 🔹 4. Флаги и статусы публикации
+        tg_flag = get_field(row, col_idx, 'TG Отправить').upper() == 'TRUE'
+        vk_flag = get_field(row, col_idx, 'VK Отправить').upper() == 'TRUE'
+        ok_flag = get_field(row, col_idx, 'OK Отправить').upper() == 'TRUE'
+
         tg_not_ready = get_field(
             row, col_idx, 'TG Статус') != STATUS['PUBLISHED']
         vk_not_ready = get_field(
             row, col_idx, 'VK Статус') != STATUS['PUBLISHED']
+        ok_not_ready = get_field(
+            row, col_idx, 'OK Статус') != STATUS['PUBLISHED']
 
-        if not (tg_flag or vk_flag):
+        if not (tg_flag or vk_flag or ok_flag):
             print(
                 f'   ⏭️ Строка {row_num}: пропуск (флаги отправки выключены)')
             return
@@ -172,6 +234,25 @@ def process_row(
         if img_path:
             img_path.unlink(missing_ok=True)
 
+      # Публикация OK
+      
+        if ok_token and ok_flag and ok_not_ready:
+            try:
+                updates = publish_ok(text, img_path)
+                batch_update_by_headers(0, row_num, updates)
+                if updates.get('OK Статус') == STATUS['PUBLISHED']:
+                    print(f'   ✅ Строка {row_num}: OK.ru опубликован')
+                else:
+                    print(f'   ❌ Строка {row_num}: OK.ru ошибка публикации')
+            except Exception as e:
+                print(f'   ❌ Строка {row_num}: OK.ru ошибка: {e}')
+                batch_update_by_headers(0, row_num, {'OK Статус': STATUS['ERROR']})
+
+    except Exception as e:
+        print(f'   ⚠️ Строка {row_num}: критическая ошибка: {e}')
+    finally:
+        if img_path:
+            img_path.unlink(missing_ok=True)
 
 # ------------------- ГЛАВНЫЙ ЦИКЛ -------------------
 def main():
@@ -185,6 +266,12 @@ def main():
     tg_channel = os.getenv('TG_CHANNEL_ID')
     vk_token = os.getenv('VK_KEY')
     vk_owner_raw = os.getenv('VK_GROUP_ID')
+    ok_app_key = os.getenv('APPLICATION_KEY')
+    ok_access_token = os.getenv('ACCESS_TOKEN')
+    ok_secret_key = os.getenv('SECRET_KEY')
+    ok_group_id = os.getenv('GROUP_ID')
+
+    ok_enabled = ok_app_key and ok_access_token and ok_secret_key and ok_group_id
 
     tg_bot = Bot(token=tg_token) if tg_token and tg_channel else None
     if not tg_bot:
@@ -199,6 +286,13 @@ def main():
             print('⚠️ VK_GROUP_ID имеет неверный числовой формат')
     if not (vk_token and vk_owner_int):
         print('⚠️ VK отключена (нет токена или owner ID)')
+
+    if not ok_enabled:
+        print('⚠️ OK.ru отключена (нет всех необходимых переменных)')
+    else:
+        print('✅ OK.ru включена')
+
+  
 
     # Бесконечный цикл мониторинга
     while True:
@@ -215,16 +309,15 @@ def main():
             print(f'\nЦикл: {now_str}, строк: {len(rows)}')
 
             for row, row_num in zip(rows, row_numbers):
+
                 process_row(
-                    row,
-                    row_num,
-                    col_idx,
-                    now,
-                    tg_bot,
-                    tg_channel,
-                    vk_token,
-                    vk_owner_int
-                )
+                    row, row_num,
+                     col_idx, now,
+                     tg_bot, tg_channel,
+                      vk_token, vk_owner_int,
+                       ok_enabled
+                       )
+
 
             print(f'✅ Цикл завершён. Сон {POLL_INTERVAL}с...')
             time.sleep(POLL_INTERVAL)

@@ -11,36 +11,92 @@ r"""Модуль преобразователь текста.
 import re
 
 
-def replaced_spacing(raw_text: str) -> str:
+def replaced_spacing(raw_text):
     """Убирает лишние пробелы."""
     return ' '.join(raw_text.split())
 
 
-def replaced_dashes(line: str) -> str:
-    """Заменяет дефисы на типографские тире."""
+def replaced_dashes(line):
+    """Заменяет дефисы на типографские тире.
+
+    Обработанные случаи:
+        - Диапазоны: 10-20 → 10–20
+        - Инициалы: А. - Б. → А. Б.
+        - Обычное тире: слово - слово → слово — слово
+
+    Args:
+        line (str): Строка с дефисами.
+
+    Returns:
+        str: Строка с правильными тире.
+    """
+    # Диапазоны чисел
     line = re.sub(r'(\d+)\s*-\s*(\d+)', r'\1–\2', line)
+    # Инициалы: А. - Б. -> А. Б. (убираем дефис)
+    line = re.sub(r'(\b[А-Яа-я]\.)\s+-\s+([А-Яа-я]\.\b)', r'\1 \2', line)
+    # Обычное длинное тире для остальных случаев
     line = re.sub(r'\s+[-–—]\s+', ' — ', line)
     return line
 
 
-def frag_alt_quotes(fragment: str) -> str:
-    """Заменяет прямые кавычки " и ' на « и » с чередованием."""
-    chars = list(fragment)
-    is_opening = True
-    for i, ch in enumerate(chars):
-        if ch in ('"', "'"):
-            chars[i] = '«' if is_opening else '»'
-            is_opening = not is_opening
-    return ''.join(chars)
+def frag_alt_quotes(fragment):
+    """Заменяет прямые кавычки " и ' на « и » с учётом вложенности.
+
+    Использует стек для отслеживания уровней цитирования.
+    Определяет тип кавычки по прилипанию к буквам:
+        - открывающая: перед кавычкой НЕ буква/цифра, после – буква/цифра
+        - закрывающая: перед буква/цифра, после НЕ буква/цифра
+    В неоднозначных случаях решает стек.
+
+    Args:
+        fragment (str): Текст с прямыми кавычками.
+
+    Returns:
+        str: Текст с «ёлочками».
+    """
+    result = []
+    stack = []
+    n = len(fragment)
+    for i, ch in enumerate(fragment):
+        if ch not in ('"', "'"):
+            result.append(ch)
+            continue
+        prev_char = fragment[i-1] if i > 0 else ''
+        next_char = fragment[i+1] if i+1 < n else ''
+        prev_is_word = prev_char.isalnum()
+        next_is_word = next_char.isalnum()
+
+        if not prev_is_word and next_is_word:
+            result.append('«')
+            stack.append(True)
+        elif prev_is_word and not next_is_word:
+            if stack:
+                result.append('»')
+                stack.pop()
+            else:
+                result.append('»')
+        else:
+            if stack:
+                result.append('»')
+                stack.pop()
+            else:
+                result.append('«')
+                stack.append(True)
+    return ''.join(result)
 
 
-def format_quoted_line(
-    spaces: str,
-    body: str,
-    tail: str,
-    punct_inside: bool
-) -> str:
-    """Оборачивает тело цитаты в «» с учётом пунктуации и добавляет хвост."""
+def format_quoted_line(spaces, body, tail, punct_inside):
+    """Оборачивает тело цитаты в «» с учётом пунктуации и добавляет хвост.
+
+    Args:
+        spaces (str): Пробелы перед открывающей кавычкой.
+        body (str): Содержимое цитаты (без внешних кавычек).
+        tail (str): Текст после закрывающей кавычки.
+        punct_inside (bool): Если True, знаки .!? остаются внутри кавычек.
+
+    Returns:
+        str: Отформатированная строка с кавычками.
+    """
     inner = frag_alt_quotes(body)
     end_punct = re.search(r'([.!?]+)$', inner)
     if end_punct and punct_inside:
@@ -51,12 +107,18 @@ def format_quoted_line(
         return f"{spaces}«{inner}»{tail}"
 
 
-def try_wrap_quotes(line: str, punct_inside: bool):
-    """Ищет кавычки в начале и в конце строк.
+def try_wrap_quotes(line, punct_inside):
+    """Обрабатывает строку с прямыми кавычками.
 
     Если строка начинается с кавычки и имеет парную закрывающую,
-    возвращает строку, обработанную как внешняя цитата.
-    Иначе возвращает None.
+        возвращает обработанную строку как внешнюю цитату, иначе None.
+
+    Args:
+        line (str): Строка текста.
+        punct_inside (bool): Флаг для передачи в format_quoted_line.
+
+    Returns:
+        str or None: Обработанная строка или None.
     """
     match = re.match(r'^(\s*)(["\'])(.*)$', line)
     if not match:
@@ -68,8 +130,9 @@ def try_wrap_quotes(line: str, punct_inside: bool):
     return format_quoted_line(spaces, body_before_last, tail, punct_inside)
 
 
-def clean_text(raw_text: str, punct_inside_quotes: bool = True) -> str:
-    """
+def clean_text(raw_text, punct_inside_quotes=True):
+    """Приводит текст к типографски аккуратному.
+
     Приводит текст к типографски аккуратному виду для SMM‑постов.
 
     Аргументы:
@@ -82,6 +145,10 @@ def clean_text(raw_text: str, punct_inside_quotes: bool = True) -> str:
     Возвращает:
         str: Текст с «ёлочками», длинным тире (—),
         коротким тире для диапазонов (10–20) и нормализованными пробелами.
+
+    Примеры:
+        >>> clean_text('Привет "мир"')
+        'Привет «мир»'
     """
     if not raw_text:
         return ""
@@ -106,12 +173,10 @@ def clean_text(raw_text: str, punct_inside_quotes: bool = True) -> str:
 
 if __name__ == "__main__":
     import sys
-    # Если передан аргумент командной строки, берём его как текст
     if len(sys.argv) > 1:
         raw = ' '.join(sys.argv[1:])
         print(clean_text(raw))
     else:
-        # Иначе читаем из stdin (полезно для пайпа)
         raw = sys.stdin.read()
         if raw:
             print(clean_text(raw))

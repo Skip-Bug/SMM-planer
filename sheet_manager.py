@@ -17,8 +17,11 @@ SCOPES = [
 ]
 
 
-def get_worksheet(sheet_index=SHEET_INDEX, spreadsheet_id=None,
-                  credentials_path=None):
+def get_worksheet(
+        sheet_index=SHEET_INDEX,
+        spreadsheet_id=None,
+        credentials_path=None
+):
     """Возвращает объект worksheet (лист) по индексу.
 
     Args:

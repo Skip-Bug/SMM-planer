@@ -16,7 +16,7 @@ def replaced_spacing(raw_text):
     return ' '.join(raw_text.split())
 
 
-def replaced_dashes(line):
+def replaced_dashes(without_space):
     """Заменяет дефисы на типографские тире.
 
     Обработанные случаи:
@@ -25,18 +25,20 @@ def replaced_dashes(line):
         - Обычное тире: слово - слово → слово — слово
 
     Args:
-        line (str): Строка с дефисами.
+        without_space (str): Строка с дефисами.
 
     Returns:
         str: Строка с правильными тире.
     """
-    line = re.sub(r'(\d+)\s*-\s*(\d+)', r'\1–\2', line)
-    line = re.sub(r'(\b[А-Яа-я]\.)\s+[-–—]\s+([А-Яа-я]\.\b)', r'\1 \2', line)
-    line = re.sub(r'\s+[-–—]\s+', ' — ', line)
-    return line
+    repair_ranges = re.sub(r'(\d+)\s*-\s*(\d+)', r'\1–\2', without_space)
+    initials_fixed = re.sub(
+        r'(\b[А-Яа-я]\.)\s+[-–—]\s+([А-Яа-я]\.\b)', r'\1 \2', repair_ranges
+    )
+    repair_dash = re.sub(r'\s+[-–—]\s+', ' — ', initials_fixed)
+    return repair_dash
 
 
-def frag_alt_quotes(fragment, punct_inside=True):
+def stackering_quotes(plain_text, punctuation_inside=True):
     """Заменяет прямые кавычки " и ' на « и » с учётом вложенности.
 
     Использует стек для отслеживания уровней цитирования.
@@ -46,46 +48,55 @@ def frag_alt_quotes(fragment, punct_inside=True):
     В неоднозначных случаях решает стек.
 
     Args:
-        fragment (str): Текст с прямыми кавычками.
+        plain_text(str): текст после нормализации пробелов и замены тире,
+            содержащий прямые кавычки.
 
     Returns:
         str: Текст с «ёлочками».
     """
-    result = []
-    stack = []
-    n = len(fragment)
-    for i, ch in enumerate(fragment):
-        if ch not in ('"', "'"):
-            result.append(ch)
-            continue
-        prev_char = fragment[i-1] if i > 0 else ''
-        next_char = fragment[i+1] if i+1 < n else ''
-        prev_is_word = prev_char.isalnum() or prev_char in ('.', '!', '?')
-        next_is_word = next_char.isalnum()
+    formatted_chars = []
+    quote_stack = []
+    length = len(plain_text)
 
-        if not prev_is_word and next_is_word:
-            result.append('«')
-            stack.append(True)
-        elif prev_is_word and not next_is_word:
-            # Если перед закрывающей кавычкой стоит знак и хотим его внутрь
-            if stack and punct_inside and prev_char in ('.', '!', '?'):
-                # Меняем местами: знак препинания и кавычка
-                punct = result.pop()
-                result.append(f'{punct}»')
+    for index, char in enumerate(plain_text):
+        if char not in ('"', "'"):
+            formatted_chars.append(char)
+            continue
+
+        left_char = plain_text[index - 1] if index > 0 else ''
+        right_char = plain_text[index + 1] if index + 1 < length else ''
+        end_sent = left_char in ('.', '!', '?')
+        is_left_alnum_or_punct = left_char.isalnum() or end_sent
+        is_right_alnum = right_char.isalnum()
+
+        # Открывающая кавычка: перед не буква/цифра, после — буква/цифра
+        if not is_left_alnum_or_punct and is_right_alnum:
+            formatted_chars.append('«')
+            quote_stack.append(True)
+
+        # Закрывающая кавычка: перед буква/цифра, после — не буква/цифра
+        elif is_left_alnum_or_punct and not is_right_alnum:
+            if quote_stack and punctuation_inside and end_sent:
+                # Меняем местами знак препинания и кавычку
+                punctuation_mark = formatted_chars.pop()
+                formatted_chars.append(f'{punctuation_mark}»')
             else:
-                result.append('»')
-            if stack:
-                stack.pop()
+                formatted_chars.append('»')
+            if quote_stack:
+                quote_stack.pop()
+
+        # Неоднозначные случаи (решает стек)
         else:
-            if not stack and (next_char == '' or next_char.isspace()):
-                result.append('»')
-            elif stack:
-                result.append('»')
-                stack.pop()
+            if not quote_stack and (right_char == '' or right_char.isspace()):
+                formatted_chars.append('»')
+            elif quote_stack:
+                formatted_chars.append('»')
+                quote_stack.pop()
             else:
-                result.append('«')
-                stack.append(True)
-    return ''.join(result)
+                formatted_chars.append('«')
+                quote_stack.append(True)
+
+    return ''.join(formatted_chars)
 
 
 def format_quoted_line(spaces, body, tail, punct_inside):
@@ -100,7 +111,7 @@ def format_quoted_line(spaces, body, tail, punct_inside):
     Returns:
         str: Отформатированная строка с кавычками.
     """
-    inner = frag_alt_quotes(body, punct_inside)
+    inner = stackering_quotes(body, punct_inside)
     end_punct = re.search(r'([.!?]+)$', inner)
     if end_punct and punct_inside:
         punct = end_punct.group(1)
@@ -110,20 +121,20 @@ def format_quoted_line(spaces, body, tail, punct_inside):
         return f"{spaces}«{inner}»{tail}"
 
 
-def try_wrap_quotes(line, punct_inside):
-    """Обрабатывает строку с прямыми кавычками.
+def typography_quotation(repair_dash, punct_inside):
+    """Обрабатывает строку с прямыми внешними кавычками.
 
     Если строка начинается с кавычки и имеет парную закрывающую,
         возвращает обработанную строку как внешнюю цитату, иначе None.
 
     Args:
-        line (str): Строка текста.
+        repair_dash (str): Строка текста после замены тире.
         punct_inside (bool): Флаг для передачи в format_quoted_line.
 
     Returns:
         str or None: Обработанная строка или None.
     """
-    match = re.match(r'^(\s*)(["\'])(.*)$', line)
+    match = re.match(r'^(\s*)(["\'])(.*)$', repair_dash)
     if not match:
         return None
     spaces, quote_char, rest = match.groups()
@@ -162,12 +173,12 @@ def clean_text(raw_text, punct_inside_quotes=True):
 
         rep_dash = replaced_dashes(without_space)
 
-        wrapped = try_wrap_quotes(rep_dash, punct_inside_quotes)
-        if wrapped is not None:
-            processed_lines.append(wrapped)
+        guillemets = typography_quotation(rep_dash, punct_inside_quotes)
+        if guillemets is not None:
+            processed_lines.append(guillemets)
         else:
             processed_lines.append(
-                frag_alt_quotes(rep_dash, punct_inside_quotes)
+                stackering_quotes(rep_dash, punct_inside_quotes)
             )
 
     return '\n'.join(processed_lines).strip()

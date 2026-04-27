@@ -10,6 +10,7 @@ from post_to_ok import post_to_ok, post_to_photo, delete_post
 from dotenv import load_dotenv
 import os
 from telegram import Bot
+from typography import clean_text
 
 
 TG_BOT = os.environ["TG_BOT_TOKEN"]
@@ -53,14 +54,13 @@ def main():
            sourse_picture = row[1]
            sourse_time = row[2]
            sourse_time_delete = row[9]
-           time = get_formatted_time(sourse_time)
-           message = load_content(sourse_text)
+           publish_time = get_formatted_time(sourse_time)
+           load_message = load_content(sourse_text)
+           message = clean_text(load_message)
            picture = load_image(sourse_picture)
 
-           print(f"Строка {i}: vk={vk}, messages={message}, picture={picture}")
-
            try:
-               if vk == 'TRUE' or time and time <= now:
+               if vk == 'TRUE' or publish_time and status[2] and publish_time <= now:
                    if picture:
                        post_id = send_vk.send_vk_photo(picture, message)
                    else:
@@ -84,55 +84,59 @@ def main():
                sheet.update(f'G{i}', [[status[3]]])
 
            try:
-               if tg == 'TRUE' or time and time <= now:
+               if tg == 'TRUE' or publish_time and status[2] and publish_time <= now:
                    if picture:
                        post_id = send_image(tg_bot,TG_CHANNEL_ID, picture)
-                       sheet.update(f'P{i}', [[post_id]])
+                       sheet.update(f'N{i}', [[post_id]])
                        sheet.update(f'I{i}', [[status[1]]])
                    else:
                        post_id = send_text(tg_bot, TG_CHANNEL_ID, message)
-                       sheet.update(f'P{i}', [[post_id]])
+                       sheet.update(f'N{i}', [[post_id]])
                        sheet.update(f'I{i}', [[status[1]]])
                    if delete == 'TRUE':
                        tg_poster.delete_message(tg_bot, TG_CHANNEL_ID, post_id)
-                       sheet.update(f'I{i}', [[status[4]]])
-                       sheet.update(f'P{i}', [['']])
+                       sheet.update(f'N{i}', [[status[4]]])
+                       sheet.update(f'I{i}', [['']])
                if sourse_time_delete:
                    time_delete = get_formatted_time(sourse_time_delete)
                    if time_delete <= now:
                        tg_poster.delete_message(tg_bot, TG_CHANNEL_ID, post_id)
-                       sheet.update(f'I{i}', [[status[4]]])
-                       sheet.update(f'P{i}', [['']])
+                       sheet.update(f'N{i}', [[status[4]]])
+                       sheet.update(f'I{i}', [['']])
 
            except requests.exceptions.RequestException as e:
                sheet.update(f'I{i}', [[status[3]]])
 
            try:
-               if ok == 'TRUE' or time and time <= now:
+               if ok == 'TRUE' or publish_time and status[2] and publish_time <= now:
                    if picture:
                        post_id = post_to_photo(picture)
-                       sheet.update(f'N{i}', [[post_id]])
+                       sheet.update(f'M{i}', [[post_id]])
                        sheet.update(f'H{i}', [[status[1]]])
                    else:
                        post_id = post_to_ok(message)
-                       sheet.update(f'N{i}', [[post_id]])
+                       sheet.update(f'M{i}', [[post_id]])
                        sheet.update(f'H{i}', [[status[1]]])
                    if delete == 'TRUE':
                        post_to_ok.delete_post(post_id)
                        sheet.update(f'H{i}', [[status[4]]])
-                       sheet.update(f'N{i}', [['']])
+                       sheet.update(f'M{i}', [['']])
                if sourse_time_delete:
                    time_delete = get_formatted_time(sourse_time_delete)
                    if time_delete <= now:
                        post_to_ok.delete_post(post_id)
                        sheet.update(f'H{i}', [[status[4]]])
-                       sheet.update(f'N{i}', [['']])
+                       sheet.update(f'M{i}', [['']])
            except requests.exceptions.RequestException as e:
                sheet.update(f'H{i}', [[status[3]]])
 
-           time.sleep(60)
+           try:
+               time.sleep(60)
+           except KeyboardInterrupt:
+               print("\nПрограмма остановлена пользователем")
+               break
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
     main()
 

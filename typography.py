@@ -31,7 +31,7 @@ def replaced_dashes(line):
         str: Строка с правильными тире.
     """
     line = re.sub(r'(\d+)\s*-\s*(\d+)', r'\1–\2', line)
-    line = re.sub(r'(\b[А-Яа-я]\.)\s+-\s+([А-Яа-я]\.\b)', r'\1 \2', line)
+    line = re.sub(r'(\b[А-Яа-я]\.)\s+[-–—]\s+([А-Яа-я]\.\b)', r'\1 \2', line)
     line = re.sub(r'\s+[-–—]\s+', ' — ', line)
     return line
 
@@ -77,7 +77,9 @@ def frag_alt_quotes(fragment, punct_inside=True):
             if stack:
                 stack.pop()
         else:
-            if stack:
+            if not stack and (next_char == '' or next_char.isspace()):
+                result.append('»')
+            elif stack:
                 result.append('»')
                 stack.pop()
             else:
@@ -125,9 +127,11 @@ def try_wrap_quotes(line, punct_inside):
     if not match:
         return None
     spaces, quote_char, rest = match.groups()
-    body_before_last, closing, tail = rest.rpartition(quote_char)
-    if not closing:
+    last_quote_index = rest.rfind(quote_char)
+    if last_quote_index == -1:
         return None
+    body_before_last = rest[:last_quote_index]
+    tail = rest[last_quote_index + 1:]
     return format_quoted_line(spaces, body_before_last, tail, punct_inside)
 
 

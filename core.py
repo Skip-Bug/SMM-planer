@@ -4,16 +4,26 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
+import gspread
 import requests
 from dotenv import load_dotenv
+from google.oauth2.service_account import Credentials
 from telegram import Bot
 
 from content_loader import load_content, load_image
-from sheet_manager import (
+from managers import (
     batch_update_by_headers,
     get_field,
-    get_rows_with_numbers
+    get_rows_with_numbers,
+    handle_platform_delete,
+    handle_platform_publish,
+    get_platform_state,
+    STATUS,
+    load_accounts_from_sheet,
+    get_account,
+    init_worksheet
 )
 from posters import (
     tg_send_text, tg_send_image, tg_delete,
@@ -35,68 +45,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ------------------- КОНСТАНТЫ -------------------
-STATUS = {
-    'REPLAY': 'Повтор',
-    'PUBLISHED': 'Опубликован',
-    'PENDING': 'Ждет публикации',
-    'ERROR': 'Ошибка публикации',
-    'DELETED': 'Удален'
-}
-POLL_INTERVAL = 60
-MAX_RETRIES = 3  # макс. количество попыток публикации при ошибке
-
-
-def _get_platform_state(row, col_idx, platform):
-    """Возвращает состояние платформы: статус, счётчик, ошибка.
-
-    Args:
-        row: Строка таблицы.
-        col_idx: Словарь {имя_колонки: индекс}.
-        platform: Название платформы ('TG', 'VK', 'OK').
-
-    Returns:
-        tuple: (status, counter, error)
-    """
-    status = get_field(row, col_idx, f'{platform} Статус')
-    counter_str = get_field(
-        row, col_idx, f'{platform} Счетчик ошибок')
-    counter = (
-        int(counter_str)
-        if counter_str and counter_str.isdigit()
-        else 0
-    )
-    error = get_field(row, col_idx, f'{platform} Ошибка')
-    return status, counter, error
-
-
-def _update_platform_error(
-    row_num, platform, error_msg, counter
-):
-    """Обновляет статус ошибки платформы в таблице."""
-    batch_update_by_headers(0, row_num, {
-        f'{platform} Статус': STATUS['ERROR'],
-        f'{platform} Ошибка': error_msg[:500],
-        f'{platform} Счетчик ошибок': str(counter)
-    })
-
-
-def _update_platform_success(row_num, platform, post_id):
-    """Обновляет статус успешной публикации в таблице."""
-    batch_update_by_headers(0, row_num, {
-        f'{platform} Статус': STATUS['PUBLISHED'],
-        f'{platform} id поста': str(post_id),
-        f'{platform} Ошибка': '',
-        f'{platform} Счетчик ошибок': ''
-    })
-
-
-def _reset_replay_to_pending(row_num, platform):
-    """Сбрасывает статус 'Повтор' в 'Ожидание'."""
-    batch_update_by_headers(0, row_num, {
-        f'{platform} Статус': STATUS['PENDING'],
-        f'{platform} Ошибка': '',
-        f'{platform} Счетчик ошибок': ''
-    })
+POLL_INTERVAL = 60  # интервал опроса таблицы (сек)
 
 
 def _delete_tg(bot, channel, post_id, row_num):
@@ -112,7 +61,7 @@ def _delete_tg(bot, channel, post_id, row_num):
         Exception: При ошибке удаления.
     """
     tg_delete(bot, channel, post_id)
-    batch_update_by_headers(0, row_num, {
+    batch_update_by_headers(row_num, {
         'TG Статус': STATUS['DELETED'],
         'TG id поста': '',
         'TG Счетчик ошибок': '',
@@ -134,7 +83,7 @@ def _delete_vk(token, owner, post_id, row_num):
         Exception: При ошибке удаления.
     """
     vk_delete(token, owner, post_id)
-    batch_update_by_headers(0, row_num, {
+    batch_update_by_headers(row_num, {
         'VK Статус': STATUS['DELETED'],
         'VK id поста': '',
         'VK Счетчик ошибок': '',
@@ -158,7 +107,7 @@ def _delete_ok(post_id, row_num, access_token, app_key, group_id, secret_key):
         Exception: При ошибке удаления.
     """
     ok_delete(post_id, access_token, app_key, group_id, secret_key)
-    batch_update_by_headers(0, row_num, {
+    batch_update_by_headers(row_num, {
         'OK Статус': STATUS['DELETED'],
         'OK id поста': '',
         'OK Счетчик ошибок': '',
@@ -208,13 +157,57 @@ def publish_ok(
         )
     return result
 
+
 # ------------------- ОБРАБОТКА ОДНОЙ СТРОКИ -------------------
+
+
+def _get_vk_credentials(
+    row, row_num, col_idx, vk_accounts,
+    fallback_token, fallback_owner_int
+):
+    """Возвращает VK credentials с fallback на .env.
+
+    Args:
+        row: Строка таблицы.
+        row_num: Номер строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        vk_accounts: Загруженные VK аккаунты.
+        fallback_token: Токен из .env.
+        fallback_owner_int: Owner ID из .env.
+
+    Returns:
+        tuple: (vk_token, vk_owner_int, log_message)
+    """
+    vk_account_name = get_field(row, col_idx, 'VK Аккаунт')
+
+    if not vk_account_name:
+        # Пусто — fallback на .env
+        return fallback_token, fallback_owner_int, 'используется .env'
+
+    vk_account = get_account('VK', vk_account_name, vk_accounts)
+    if vk_account:
+        # Аккаунт найден — используем его
+        return (
+            vk_account['token'],
+            vk_account['owner_id'],
+            f'аккаунт {vk_account_name}'
+        )
+    else:
+        # Аккаунт указан, но не найден — fallback на .env + предупреждение
+        logger.warning(
+            f'Строка {row_num}: VK аккаунт "{vk_account_name}" '
+            f'не найден — используется .env')
+        return (
+            fallback_token, fallback_owner_int,
+            'не найден, используется .env'
+        )
 
 
 def process_row(
     row, row_num, col_idx,
     now, tg_bot, tg_channel,
-    vk_token, vk_owner_int,
+    vk_accounts,
+    vk_default_token, vk_default_owner_int,
     ok_enabled,
     ok_access_token, ok_app_key,
     ok_group_id, ok_secret_key
@@ -222,6 +215,13 @@ def process_row(
     """Обработка одной строки: удаление → публикация (с повторами)."""
     img_path = None
     try:
+        # ---------- 0. ПОЛУЧЕНИЕ VK CREDENTIALS С FALLBACK ----------
+        vk_token, vk_owner_int, _ = _get_vk_credentials(
+            row, row_num, col_idx, vk_accounts,
+            vk_default_token, vk_default_owner_int
+        )
+        vk_enabled = bool(vk_token and vk_owner_int)
+
         # ---------- 1. УДАЛЕНИЕ ----------
         delete_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
         delete_time = parse_datetime_ru(
@@ -230,44 +230,39 @@ def process_row(
 
         if should_delete:
             # TG
-            tg_status = get_field(row, col_idx, 'TG Статус')
             tg_id = get_field(row, col_idx, 'TG id поста')
+            tg_status = get_field(row, col_idx, 'TG Статус')
             tg_del_cond = (
                 tg_bot and tg_channel and tg_id
                 and tg_status != STATUS['DELETED']
             )
             if tg_del_cond:
-                try:
-                    _delete_tg(tg_bot, tg_channel, tg_id, row_num)
-                except Exception as e:
-                    logger.error(
-                        f'Строка {row_num}: TG ошибка удаления: {e}')
+                handle_platform_delete(
+                    'TG', tg_id, row_num,
+                    _delete_tg, (tg_bot, tg_channel, tg_id)
+                )
+
             # VK
-            vk_status = get_field(row, col_idx, 'VK Статус')
             vk_id = get_field(row, col_idx, 'VK id поста')
-            vk_del_cond = (
-                vk_token and vk_owner_int and vk_id
-                and vk_status != STATUS['DELETED']
-            )
-            if vk_del_cond:
-                try:
-                    _delete_vk(vk_token, vk_owner_int, vk_id, row_num)
-                except Exception as e:
-                    logger.error(
-                        f'Строка {row_num}: VK ошибка удаления: {e}')
+            vk_status = get_field(row, col_idx, 'VK Статус')
+            if vk_enabled and vk_id and vk_status != STATUS['DELETED']:
+                handle_platform_delete(
+                    'VK', vk_id, row_num,
+                    _delete_vk, (vk_token, vk_owner_int, vk_id)
+                )
+
             # OK
-            ok_status = get_field(row, col_idx, 'OK Статус')
             ok_id = get_field(row, col_idx, 'OK id поста')
+            ok_status = get_field(row, col_idx, 'OK Статус')
             if ok_enabled and ok_id and ok_status != STATUS['DELETED']:
-                try:
-                    _delete_ok(
+                handle_platform_delete(
+                    'OK', ok_id, row_num,
+                    _delete_ok, (
                         ok_id, row_num,
                         ok_access_token, ok_app_key,
                         ok_group_id, ok_secret_key
                     )
-                except Exception as e:
-                    logger.error(
-                        f'Строка {row_num}: OK ошибка удаления: {e}')
+                )
             return
 
         # ---------- 2. ОЖИДАНИЕ (будущая дата публикации) ----------
@@ -281,42 +276,22 @@ def process_row(
             time_pub = pub_time.strftime("%d.%m.%Y %H:%M")
             logger.info(f'Строка {row_num}: ожидание (дата: {time_pub})')
             updates = {}
-            # TG
-            tg_status = get_field(row, col_idx, 'TG Статус')
-            tg_pending_cond = (
-                tg_flag and tg_status not in (
-                    STATUS['PUBLISHED'], STATUS['DELETED']
-                )
-            )
-            if tg_pending_cond:
-                updates['TG Статус'] = STATUS['PENDING']
-                updates['TG Ошибка'] = ''
-                updates['TG Счетчик ошибок'] = ''
-            # VK
-            vk_status = get_field(row, col_idx, 'VK Статус')
-            vk_pending_cond = (
-                vk_flag and vk_status not in (
-                    STATUS['PUBLISHED'], STATUS['DELETED']
-                )
-            )
-            if vk_pending_cond:
-                updates['VK Статус'] = STATUS['PENDING']
-                updates['VK Ошибка'] = ''
-                updates['VK Счетчик ошибок'] = ''
-            # OK
-            ok_status = get_field(row, col_idx, 'OK Статус')
-            ok_pending_cond = (
-                ok_flag and ok_status not in (
-                    STATUS['PUBLISHED'], STATUS['DELETED']
-                )
-            )
-            if ok_pending_cond:
-                updates['OK Статус'] = STATUS['PENDING']
-                updates['OK Ошибка'] = ''
-                updates['OK Счетчик ошибок'] = ''
+            platforms = [
+                ('TG', tg_flag),
+                ('VK', vk_flag),
+                ('OK', ok_flag)
+            ]
+
+            for platform, flag in platforms:
+                status = get_platform_state(row, col_idx, platform)[0]
+                if flag and status not in (
+                        STATUS['PUBLISHED'], STATUS['DELETED']):
+                    updates[f'{platform} Статус'] = STATUS['PENDING']
+                    updates[f'{platform} Ошибка'] = ''
+                    updates[f'{platform} Счетчик ошибок'] = ''
 
             if updates:
-                batch_update_by_headers(0, row_num, updates)
+                batch_update_by_headers(row_num, updates)
             return
 
         # ---------- 3. ПОДГОТОВКА КОНТЕНТА ----------
@@ -330,137 +305,44 @@ def process_row(
 
         # ---------- 4. ПУБЛИКАЦИЯ С ПОВТОРАМИ ----------
         # TG
-        if tg_bot and tg_channel and tg_flag:
-            tg_status, tg_counter, tg_error = _get_platform_state(
-                row, col_idx, 'TG')
-
-            # Флаги состояния
-            is_published = tg_status == STATUS['PUBLISHED']
-            is_error = tg_status == STATUS['ERROR']
-            is_replay = tg_status == STATUS['REPLAY']
-            can_retry = is_error and tg_counter < MAX_RETRIES
-
-            # Обработка ручного повтора
-            if is_replay:
-                _reset_replay_to_pending(row_num, 'TG')
-                logger.info(f'Строка {row_num}: TG ручной повтор – сброс')
-
-            # Публикация
-            if not is_published:
-                try:
-                    post_id = publish_tg(
-                        tg_bot, tg_channel, clear_text, img_path)
-                    if post_id:
-                        _update_platform_success(row_num, 'TG', post_id)
-                        logger.info(
-                            f'Строка {row_num}: TG опубликован '
-                            f'(ID: {post_id})')
-                    else:
-                        raise RuntimeError('TG API вернул пустой ответ')
-                except requests.RequestException as e:
-                    # Сетевая ошибка — можно пробовать снова
-                    if can_retry:
-                        new_counter = tg_counter + 1
-                        old_err = tg_error or ''
-                        new_err = f'{old_err}, {e}' if old_err else str(e)
-                        _update_platform_error(
-                            row_num, 'TG', new_err, new_counter)
-                        logger.warning(
-                            f'Строка {row_num}: TG сетевая ошибка '
-                            f'(попытка {new_counter}/{MAX_RETRIES})')
-                    else:
-                        logger.warning(
-                            f'Строка {row_num}: TG лимит повторов '
-                            f'({MAX_RETRIES})')
+        tg_enabled = bool(tg_bot and tg_channel)
+        if tg_enabled and tg_flag:
+            handle_platform_publish(
+                row_num, 'TG',
+                publish_func=lambda: publish_tg(
+                    tg_bot, tg_channel, clear_text, img_path),
+                publish_args=(),
+                col_idx=col_idx, row=row,
+                is_enabled=True
+            )
 
         # VK
-        if vk_token and vk_owner_int and vk_flag:
-            vk_status, vk_counter, vk_error = _get_platform_state(
-                row, col_idx, 'VK')
-
-            # Флаги состояния
-            is_published = vk_status == STATUS['PUBLISHED']
-            is_error = vk_status == STATUS['ERROR']
-            is_replay = vk_status == STATUS['REPLAY']
-            can_retry = is_error and vk_counter < MAX_RETRIES
-
-            # Обработка ручного повтора
-            if is_replay:
-                _reset_replay_to_pending(row_num, 'VK')
-                logger.info(f'Строка {row_num}: VK ручной повтор – сброс')
-
-            # Публикация
-            if not is_published:
-                try:
-                    post_id = publish_vk(
-                        vk_token, vk_owner_int, clear_text, img_path)
-                    if post_id:
-                        _update_platform_success(row_num, 'VK', post_id)
-                        logger.info(
-                            f'Строка {row_num}: VK опубликован '
-                            f'(ID: {post_id})')
-                    else:
-                        raise RuntimeError('VK API вернул пустой ответ')
-                except requests.RequestException as e:
-                    # Сетевая ошибка — можно пробовать снова
-                    if can_retry:
-                        new_counter = vk_counter + 1
-                        old_err = vk_error or ''
-                        new_err = f'{old_err}, {e}' if old_err else str(e)
-                        _update_platform_error(
-                            row_num, 'VK', new_err, new_counter)
-                        logger.warning(
-                            f'Строка {row_num}: VK сетевая ошибка '
-                            f'(попытка {new_counter}/{MAX_RETRIES})')
-                    else:
-                        logger.warning(
-                            f'Строка {row_num}: VK лимит повторов '
-                            f'({MAX_RETRIES})')
+        if vk_enabled and vk_flag:
+            handle_platform_publish(
+                row_num, 'VK',
+                publish_func=lambda: publish_vk(
+                    vk_token, vk_owner_int,
+                    clear_text, img_path
+                ),
+                publish_args=(),
+                col_idx=col_idx, row=row,
+                is_enabled=True
+            )
 
         # OK
         if ok_enabled and ok_flag:
-            ok_status, ok_counter, ok_error = _get_platform_state(
-                row, col_idx, 'OK')
-
-            # Флаги состояния
-            is_published = ok_status == STATUS['PUBLISHED']
-            is_error = ok_status == STATUS['ERROR']
-            is_replay = ok_status == STATUS['REPLAY']
-            can_retry = is_error and ok_counter < MAX_RETRIES
-
-            # Обработка ручного повтора
-            if is_replay:
-                _reset_replay_to_pending(row_num, 'OK')
-                logger.info(f'Строка {row_num}: OK ручной повтор – сброс')
-
-            # Публикация
-            if not is_published:
-                try:
-                    post_id = publish_ok(
-                        clear_text, ok_access_token, ok_app_key,
-                        ok_group_id, ok_secret_key, img_path)
-                    if post_id:
-                        _update_platform_success(row_num, 'OK', post_id)
-                        logger.info(
-                            f'Строка {row_num}: OK.ru опубликован '
-                            f'(ID: {post_id})')
-                    else:
-                        raise RuntimeError('OK API вернул пустой ответ')
-                except requests.RequestException as e:
-                    # Сетевая ошибка — можно пробовать снова
-                    if can_retry:
-                        new_counter = ok_counter + 1
-                        old_err = ok_error or ''
-                        new_err = f'{old_err}, {e}' if old_err else str(e)
-                        _update_platform_error(
-                            row_num, 'OK', new_err, new_counter)
-                        logger.warning(
-                            f'Строка {row_num}: OK сетевая ошибка '
-                            f'(попытка {new_counter}/{MAX_RETRIES})')
-                    else:
-                        logger.warning(
-                            f'Строка {row_num}: OK лимит повторов '
-                            f'({MAX_RETRIES})')
+            handle_platform_publish(
+                row_num, 'OK',
+                publish_func=lambda: publish_ok(
+                    clear_text,
+                    ok_access_token, ok_app_key,
+                    ok_group_id, ok_secret_key,
+                    img_path
+                ),
+                publish_args=(),
+                col_idx=col_idx, row=row,
+                is_enabled=True
+            )
 
     except Exception as e:
         logger.error(
@@ -479,7 +361,37 @@ def main():
     print('🚀 SMM Planner: Оркестратор запущен')
     print('=' * 50)
 
-    # Инициализация платформ
+    # ---------- ИНИЦИАЛИЗАЦИЯ GOOGLE SHEETS ----------
+    spreadsheet_id = os.getenv('SPREADSHEET_ID')
+    credentials_path = os.getenv('CREDENTIALS_PATH', 'credentials.json')
+
+    if not spreadsheet_id:
+        print('❌ Ошибка: не указан SPREADSHEET_ID в .env')
+        sys.exit(1)
+
+    creds_path = Path(credentials_path)
+    if not creds_path.exists():
+        print(f'❌ Ошибка: файл {credentials_path} не найден')
+        sys.exit(1)
+
+    try:
+        scopes = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
+        creds = Credentials.from_service_account_file(
+            str(creds_path), scopes=scopes
+        )
+        client = gspread.authorize(creds)
+        spreadsheet = client.open_by_key(spreadsheet_id)
+        worksheet = spreadsheet.get_worksheet(0)
+        init_worksheet(worksheet)
+        print('✅ Google Sheets подключён')
+    except Exception as e:
+        print(f'❌ Ошибка подключения к Google Sheets: {e}')
+        sys.exit(1)
+
+    # ---------- ИНИЦИАЛИЗАЦИЯ ПЛАТФОРМ ----------
     tg_token = os.getenv('TG_BOT_TOKEN')
     tg_channel = os.getenv('TG_CHANNEL_ID')
     vk_token = os.getenv('VK_KEY')
@@ -510,6 +422,11 @@ def main():
     else:
         print('✅ OK.ru включена')
 
+    # Загрузка VK аккаунтов (мультимаккаунты)
+    vk_accounts = load_accounts_from_sheet(sheet_index=1)
+    vk_accounts_count = len(vk_accounts.get('VK', {}))
+    print(f'📦 Загружено VK аккаунтов: {vk_accounts_count}')
+
     while True:
         try:
             rows, row_numbers, headers = get_rows_with_numbers()
@@ -527,6 +444,7 @@ def main():
                 process_row(
                     row, row_num, col_idx, now,
                     tg_bot, tg_channel,
+                    vk_accounts,
                     vk_token, vk_owner_int,
                     ok_enabled, ok_access_token, ok_app_key,
                     ok_group_id, ok_secret_key

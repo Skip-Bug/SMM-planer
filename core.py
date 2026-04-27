@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 import gspread
-import requests
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from telegram import Bot
@@ -21,9 +20,11 @@ from managers import (
     handle_platform_publish,
     get_platform_state,
     STATUS,
-    load_accounts_from_sheet,
-    get_account,
     init_worksheet
+)
+from managers.accounts import (
+    load_accounts_from_sheet,
+    get_account
 )
 from posters import (
     tg_send_text, tg_send_image, tg_delete,
@@ -56,17 +57,17 @@ def _delete_tg(bot, channel, post_id, row_num):
         channel: ID канала.
         post_id: ID сообщения для удаления.
         row_num: Номер строки в таблице.
-
-    Raises:
-        Exception: При ошибке удаления.
     """
     tg_delete(bot, channel, post_id)
-    batch_update_by_headers(row_num, {
+
+    tg_del_upd = {
         'TG Статус': STATUS['DELETED'],
         'TG id поста': '',
         'TG Счетчик ошибок': '',
         'TG Ошибка': ''
-    })
+    }
+    batch_update_by_headers(row_num, tg_del_upd)
+
     logger.info(f'Строка {row_num}: TG удален (ID: {post_id})')
 
 
@@ -78,17 +79,17 @@ def _delete_vk(token, owner, post_id, row_num):
         owner: ID владельца.
         post_id: ID поста для удаления.
         row_num: Номер строки в таблице.
-
-    Raises:
-        Exception: При ошибке удаления.
     """
     vk_delete(token, owner, post_id)
-    batch_update_by_headers(row_num, {
+
+    vk_del_upd = {
         'VK Статус': STATUS['DELETED'],
         'VK id поста': '',
         'VK Счетчик ошибок': '',
         'VK Ошибка': ''
-    })
+    }
+    batch_update_by_headers(row_num, vk_del_upd)
+
     logger.info(f'Строка {row_num}: VK удален (ID: {post_id})')
 
 
@@ -102,24 +103,34 @@ def _delete_ok(post_id, row_num, access_token, app_key, group_id, secret_key):
         app_key: Ключ приложения.
         group_id: ID группы.
         secret_key: Секретный ключ.
-
-    Raises:
-        Exception: При ошибке удаления.
     """
     ok_delete(post_id, access_token, app_key, group_id, secret_key)
-    batch_update_by_headers(row_num, {
+
+    ok_del_upd = {
         'OK Статус': STATUS['DELETED'],
         'OK id поста': '',
         'OK Счетчик ошибок': '',
         'OK Ошибка': ''
-    })
+    }
+    batch_update_by_headers(row_num, ok_del_upd)
+
     logger.info(f'Строка {row_num}: OK.ru удален (ID: {post_id})')
 
 # ------------------- ПУБЛИКАЦИЯ В TELEGRAM -------------------
 
 
 def publish_tg(bot, channel_id, text, img_path=None):
-    """Публикует в Telegram. Возвращает message_id."""
+    """Публикует в Telegram. Возвращает message_id.
+
+    Args:
+        bot: Экземпляр Telegram Bot.
+        channel_id: ID канала.
+        text: Текст сообщения.
+        img_path: Путь к изображению (опционально).
+
+    Returns:
+        int: message_id опубликованного сообщения.
+    """
     if img_path:
         return tg_send_image(bot, channel_id, img_path, caption=text)
     else:
@@ -129,7 +140,17 @@ def publish_tg(bot, channel_id, text, img_path=None):
 
 
 def publish_vk(token, owner, text, img_path=None):
-    """Публикует в VK. Возвращает post_id."""
+    """Публикует в VK. Возвращает post_id.
+
+    Args:
+        token: Сервисный ключ ВКонтакте.
+        owner: ID владельца.
+        text: Текст поста.
+        img_path: Путь к изображению (опционально).
+
+    Returns:
+        int: post_id опубликованного поста.
+    """
     if img_path:
         return vk_send_image(token, owner, img_path, caption=text)
     else:
@@ -142,7 +163,19 @@ def publish_ok(
         text, access_token, application_key,
         group_id, secret_key, img_path=None
 ):
-    """Публикует в OK.ru. Возвращает id поста."""
+    """Публикует в OK.ru. Возвращает id поста.
+
+    Args:
+        text: Текст поста.
+        access_token: Токен доступа.
+        application_key: Ключ приложения.
+        group_id: ID группы.
+        secret_key: Секретный ключ.
+        img_path: Путь к изображению (опционально).
+
+    Returns:
+        int: id опубликованного поста.
+    """
     if img_path:
         result = ok_send_image(
             image_path=str(img_path), text=text,
@@ -212,21 +245,38 @@ def process_row(
     ok_access_token, ok_app_key,
     ok_group_id, ok_secret_key
 ):
-    """Обработка одной строки: удаление → публикация (с повторами)."""
+    """Обработка строки: удаление → публикация.
+
+    Args:
+        row: Строка таблицы.
+        row_num: Номер строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        now: Текущее время.
+        tg_bot: Telegram Bot.
+        tg_channel: ID канала TG.
+        vk_accounts: Словарь VK аккаунтов.
+        vk_default_token: Токен VK по умолчанию.
+        vk_default_owner_int: Owner ID по умолчанию.
+        ok_enabled: Флаг включения OK.
+        ok_access_token: Токен OK.
+        ok_app_key: Ключ приложения OK.
+        ok_group_id: ID группы OK.
+        ok_secret_key: Секретный ключ OK.
+    """
     img_path = None
     try:
-        # ---------- 0. ПОЛУЧЕНИЕ VK CREDENTIALS С FALLBACK ----------
+        # 0. VK credentials
         vk_token, vk_owner_int, _ = _get_vk_credentials(
             row, row_num, col_idx, vk_accounts,
             vk_default_token, vk_default_owner_int
         )
         vk_enabled = bool(vk_token and vk_owner_int)
 
-        # ---------- 1. УДАЛЕНИЕ ----------
-        delete_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
-        delete_time = parse_datetime_ru(
+        # 1. Удаление
+        del_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
+        del_time = parse_datetime_ru(
             get_field(row, col_idx, 'Дата удаления'))
-        should_delete = delete_flag or (delete_time and delete_time <= now)
+        should_delete = del_flag or (del_time and del_time <= now)
 
         if should_delete:
             # TG
@@ -239,22 +289,28 @@ def process_row(
             if tg_del_cond:
                 handle_platform_delete(
                     'TG', tg_id, row_num,
-                    _delete_tg, (tg_bot, tg_channel, tg_id)
+                    _delete_tg, (tg_bot, tg_channel, tg_id, row_num)
                 )
 
             # VK
             vk_id = get_field(row, col_idx, 'VK id поста')
             vk_status = get_field(row, col_idx, 'VK Статус')
-            if vk_enabled and vk_id and vk_status != STATUS['DELETED']:
+            vk_del_cond = (
+                vk_enabled and vk_id and vk_status != STATUS['DELETED']
+            )
+            if vk_del_cond:
                 handle_platform_delete(
                     'VK', vk_id, row_num,
-                    _delete_vk, (vk_token, vk_owner_int, vk_id)
+                    _delete_vk, (vk_token, vk_owner_int, vk_id, row_num)
                 )
 
             # OK
             ok_id = get_field(row, col_idx, 'OK id поста')
             ok_status = get_field(row, col_idx, 'OK Статус')
-            if ok_enabled and ok_id and ok_status != STATUS['DELETED']:
+            ok_del_cond = (
+                ok_enabled and ok_id and ok_status != STATUS['DELETED']
+            )
+            if ok_del_cond:
                 handle_platform_delete(
                     'OK', ok_id, row_num,
                     _delete_ok, (
@@ -265,7 +321,7 @@ def process_row(
                 )
             return
 
-        # ---------- 2. ОЖИДАНИЕ (будущая дата публикации) ----------
+        # 2. Ожидание
         pub_time = parse_datetime_ru(
             get_field(row, col_idx, 'Дата публикации'))
         tg_flag = get_field(row, col_idx, 'TG Отправить').upper() == 'TRUE'
@@ -275,26 +331,23 @@ def process_row(
         if pub_time and pub_time > now:
             time_pub = pub_time.strftime("%d.%m.%Y %H:%M")
             logger.info(f'Строка {row_num}: ожидание (дата: {time_pub})')
-            updates = {}
-            platforms = [
-                ('TG', tg_flag),
-                ('VK', vk_flag),
-                ('OK', ok_flag)
-            ]
 
-            for platform, flag in platforms:
-                status = get_platform_state(row, col_idx, platform)[0]
+            plat_list = [('TG', tg_flag), ('VK', vk_flag), ('OK', ok_flag)]
+            pend_upd = {}
+
+            for plat, flag in plat_list:
+                status = get_platform_state(row, col_idx, plat)[0]
                 if flag and status not in (
                         STATUS['PUBLISHED'], STATUS['DELETED']):
-                    updates[f'{platform} Статус'] = STATUS['PENDING']
-                    updates[f'{platform} Ошибка'] = ''
-                    updates[f'{platform} Счетчик ошибок'] = ''
+                    pend_upd[f'{plat} Статус'] = STATUS['PENDING']
+                    pend_upd[f'{plat} Ошибка'] = ''
+                    pend_upd[f'{plat} Счетчик ошибок'] = ''
 
-            if updates:
-                batch_update_by_headers(row_num, updates)
+            if pend_upd:
+                batch_update_by_headers(row_num, pend_upd)
             return
 
-        # ---------- 3. ПОДГОТОВКА КОНТЕНТА ----------
+        # 3. Контент
         text_raw = get_field(row, col_idx, 'Пост')
         if not text_raw:
             logger.debug(f'Строка {row_num}: пропуск (пустой пост)')
@@ -303,8 +356,7 @@ def process_row(
         clear_text = clean_text(not_format_text)
         img_path = load_image(get_field(row, col_idx, 'Картинка'))
 
-        # ---------- 4. ПУБЛИКАЦИЯ С ПОВТОРАМИ ----------
-        # TG
+        # 4. Публикация
         tg_enabled = bool(tg_bot and tg_channel)
         if tg_enabled and tg_flag:
             handle_platform_publish(
@@ -316,7 +368,6 @@ def process_row(
                 is_enabled=True
             )
 
-        # VK
         if vk_enabled and vk_flag:
             handle_platform_publish(
                 row_num, 'VK',
@@ -329,7 +380,6 @@ def process_row(
                 is_enabled=True
             )
 
-        # OK
         if ok_enabled and ok_flag:
             handle_platform_publish(
                 row_num, 'OK',
@@ -347,7 +397,7 @@ def process_row(
     except Exception as e:
         logger.error(
             f'Строка {row_num}: критическая ошибка: {e}', exc_info=True)
-        raise  # Пробрасываем ошибку дальше
+        raise
     finally:
         if img_path:
             img_path.unlink(missing_ok=True)
@@ -356,7 +406,10 @@ def process_row(
 
 
 def main():
-    """Основной цикл программы."""
+    """Основной цикл программы.
+
+    Инициализирует Google Sheets, платформы и запускает цикл обработки.
+    """
     load_dotenv()
     print('🚀 SMM Planner: Оркестратор запущен')
     print('=' * 50)
@@ -366,11 +419,13 @@ def main():
     credentials_path = os.getenv('CREDENTIALS_PATH', 'credentials.json')
 
     if not spreadsheet_id:
+        logger.critical('Не указан SPREADSHEET_ID в .env')
         print('❌ Ошибка: не указан SPREADSHEET_ID в .env')
         sys.exit(1)
 
     creds_path = Path(credentials_path)
     if not creds_path.exists():
+        logger.critical(f'Файл credentials не найден: {credentials_path}')
         print(f'❌ Ошибка: файл {credentials_path} не найден')
         sys.exit(1)
 
@@ -386,9 +441,23 @@ def main():
         spreadsheet = client.open_by_key(spreadsheet_id)
         worksheet = spreadsheet.get_worksheet(0)
         init_worksheet(worksheet)
+        logger.info('Google Sheets авторизован')
         print('✅ Google Sheets подключён')
-    except Exception as e:
-        print(f'❌ Ошибка подключения к Google Sheets: {e}')
+    except FileNotFoundError:
+        logger.critical(f'Файл credentials не найден: {credentials_path}')
+        print(f'❌ Файл credentials не найден: {credentials_path}')
+        sys.exit(1)
+    except ValueError as e:
+        logger.critical(f'Неверный формат credentials: {e}')
+        print('❌ Неверный формат credentials')
+        sys.exit(1)
+    except gspread.exceptions.APIError as e:
+        logger.critical(f'API ошибка Google: {e.response.status_code}')
+        print(f'❌ API ошибка Google: {e.response.status_code}')
+        sys.exit(1)
+    except gspread.exceptions.GSpreadException as e:
+        logger.critical(f'Ошибка подключения к Google Sheets: {e}')
+        print('❌ Ошибка подключения к Google Sheets')
         sys.exit(1)
 
     # ---------- ИНИЦИАЛИЗАЦИЯ ПЛАТФОРМ ----------

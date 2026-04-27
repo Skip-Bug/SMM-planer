@@ -104,8 +104,6 @@ def handle_platform_delete(
 
     try:
         delete_func(*delete_args)
-        logger.info(
-            f'Строка {row_num}: {platform} удален (ID: {post_id})')
     except Exception as e:
         logger.error(
             f'Строка {row_num}: {platform} ошибка удаления: {e}')
@@ -113,7 +111,7 @@ def handle_platform_delete(
 
 def handle_platform_publish(
     row_num, platform, publish_func, publish_args,
-    col_idx, row, is_enabled
+    col_idx, row, is_enabled, is_selected=False
 ):
     """Универсальная публикация с повторными попытками.
 
@@ -125,6 +123,7 @@ def handle_platform_publish(
         col_idx: Словарь колонок.
         row: Строка таблицы.
         is_enabled: Флаг включения платформы.
+        is_selected: Флаг выбора платформы для этой строки.
 
     Returns:
         bool: True если публикация успешна.

@@ -31,11 +31,11 @@ def _ok_api_request(params, secret_key):
     params['sig'] = _generate_sig(params, secret_key)
     response = requests.post(OK_API_URL, data=params, timeout=20)
     response.raise_for_status()
-    data = response.json()
-    if isinstance(data, dict) and 'error' in data:
-        error_msg = data['error'].get('error_msg', 'Unknown error')
+    id_post = response.json()
+    if isinstance(id_post, dict) and 'error' in id_post:
+        error_msg = id_post['error'].get('error_msg', 'Unknown error')
         raise RuntimeError(f"OK API Error: {error_msg}")
-    return data
+    return id_post
 
 
 def ok_send_text(text, access_token, application_key, group_id, secret_key):
@@ -67,10 +67,8 @@ def ok_send_text(text, access_token, application_key, group_id, secret_key):
         'attachment': json.dumps(attachment, ensure_ascii=False)
     }
 
-    data = _ok_api_request(params, secret_key)
-    if isinstance(data, dict):
-        return str(data.get('result', ''))
-    return str(data)
+    topic_id = _ok_api_request(params, secret_key)
+    return topic_id
 
 
 def ok_send_image(
@@ -89,7 +87,7 @@ def ok_send_image(
         secret_key (str): Секретный ключ.
 
     Returns:
-        str: topicId поста.
+        str: delete_id поста (для удаления).
 
     Raises:
         FileNotFoundError: Если файл не найден.
@@ -143,36 +141,43 @@ def ok_send_image(
         'attachment': json.dumps(
             attachment, ensure_ascii=False),
     }
-    data = _ok_api_request(post_params, secret_key)
-    if isinstance(data, dict):
-        return str(data.get('result', data.get('topicId', '')))
-    return str(data)
+    topic_id = _ok_api_request(post_params, secret_key)
+    return topic_id
 
 
 def ok_delete(delete_id, access_token, application_key, group_id, secret_key):
-    """Удаляет пост в OK.ru.
+    """Удаляет пост в OK.ru через mediatopic.deleteTopic.
 
     Args:
-        delete_id (str): ID поста для удаления.
+        delete_id (str): ID поста для удаления (topicId).
         access_token (str): Токен доступа.
         application_key (str): Ключ приложения.
         group_id (str): ID группы.
-        secret_key (str): Секретный ключ.
-
-    Returns:
-        bool: True если удаление успешно.
+        secret_key (str): Секретный ключ приложения.
 
     Raises:
         requests.RequestException: При сетевой ошибке.
         RuntimeError: При ошибке API.
     """
+    gid = group_id
+    if str(gid).startswith('-'):
+        gid = str(gid)[1:]
+
     params = {
         'method': 'mediatopic.deleteTopic',
         'application_key': application_key,
         'access_token': access_token,
         'format': 'json',
-        'gid': group_id,
-        'delete_id': delete_id,
+        'gid': gid,
+        'topic_id': delete_id,
     }
-    _ok_api_request(params, secret_key)
-    return True
+
+    params['sig'] = _generate_sig(params, secret_key)
+
+    response = requests.post(OK_API_URL, data=params, timeout=20)
+    response.raise_for_status()
+    result = response.json()
+
+    if 'error' in result:
+        error_msg = result['error'].get('error_msg', 'Unknown error')
+        raise RuntimeError(f'OK API Error: {error_msg}')

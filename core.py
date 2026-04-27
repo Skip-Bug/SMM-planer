@@ -9,6 +9,7 @@ from pathlib import Path
 import gspread
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
+import requests
 from telegram import Bot
 
 from content_loader import load_content, load_image
@@ -46,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ------------------- КОНСТАНТЫ -------------------
-POLL_INTERVAL = 60  # интервал опроса таблицы (сек)
+POLL_INTERVAL = 5  # интервал опроса таблицы (сек)
 
 
 def _delete_tg(bot, channel, post_id, row_num):
@@ -97,14 +98,21 @@ def _delete_ok(post_id, row_num, access_token, app_key, group_id, secret_key):
     """Удаляет пост в OK.ru.
 
     Args:
-        post_id: ID поста для удаления.
+        post_id: ID поста для удаления (topicId).
         row_num: Номер строки в таблице.
         access_token: Токен доступа.
         app_key: Ключ приложения.
         group_id: ID группы.
         secret_key: Секретный ключ.
+
+    Raises:
+        Exception: При ошибке удаления.
     """
-    ok_delete(post_id, access_token, app_key, group_id, secret_key)
+    try:
+        ok_delete(post_id, access_token, app_key, group_id, secret_key)
+    except Exception as e:
+        logger.error(f'OK API ошибка: {e}')
+        raise
 
     ok_del_upd = {
         'OK Статус': STATUS['DELETED'],
@@ -174,7 +182,7 @@ def publish_ok(
         img_path: Путь к изображению (опционально).
 
     Returns:
-        int: id опубликованного поста.
+        str: id опубликованного поста.
     """
     if img_path:
         result = ok_send_image(
@@ -189,7 +197,6 @@ def publish_ok(
             secret_key=secret_key
         )
     return result
-
 
 # ------------------- ОБРАБОТКА ОДНОЙ СТРОКИ -------------------
 
@@ -358,40 +365,37 @@ def process_row(
 
         # 4. Публикация
         tg_enabled = bool(tg_bot and tg_channel)
-        if tg_enabled and tg_flag:
-            handle_platform_publish(
-                row_num, 'TG',
-                publish_func=lambda: publish_tg(
-                    tg_bot, tg_channel, clear_text, img_path),
-                publish_args=(),
-                col_idx=col_idx, row=row,
-                is_enabled=True
-            )
 
-        if vk_enabled and vk_flag:
-            handle_platform_publish(
-                row_num, 'VK',
-                publish_func=lambda: publish_vk(
-                    vk_token, vk_owner_int,
-                    clear_text, img_path
-                ),
-                publish_args=(),
-                col_idx=col_idx, row=row,
-                is_enabled=True
-            )
+        tg_status = get_platform_state(row, col_idx, 'TG')[0]
+        vk_status = get_platform_state(row, col_idx, 'VK')[0]
+        ok_status = get_platform_state(row, col_idx, 'OK')[0]
 
-        if ok_enabled and ok_flag:
+        # Определяем платформы для публикации
+        # Если есть REPLAY — публикуем только платформу с REPLAY
+        if tg_status == STATUS['REPLAY']:
+            platforms_to_publish = [('TG', tg_enabled, lambda: publish_tg(tg_bot, tg_channel, clear_text, img_path))]
+        elif vk_status == STATUS['REPLAY']:
+            platforms_to_publish = [('VK', vk_enabled, lambda: publish_vk(vk_token, vk_owner_int, clear_text, img_path))]
+        elif ok_status == STATUS['REPLAY']:
+            platforms_to_publish = [('OK', ok_enabled, lambda: publish_ok(clear_text, ok_access_token, ok_app_key, ok_group_id, ok_secret_key, img_path))]
+        else:
+            # Нет REPLAY — используем флаги
+            platforms_to_publish = []
+            if tg_enabled and tg_flag:
+                platforms_to_publish.append(('TG', True, lambda: publish_tg(tg_bot, tg_channel, clear_text, img_path)))
+            if vk_enabled and vk_flag:
+                platforms_to_publish.append(('VK', True, lambda: publish_vk(vk_token, vk_owner_int, clear_text, img_path)))
+            if ok_enabled and ok_flag:
+                platforms_to_publish.append(('OK', True, lambda: publish_ok(clear_text, ok_access_token, ok_app_key, ok_group_id, ok_secret_key, img_path)))
+
+        # Публикуем выбранные платформы
+        for plat, is_enabled, publish_func in platforms_to_publish:
             handle_platform_publish(
-                row_num, 'OK',
-                publish_func=lambda: publish_ok(
-                    clear_text,
-                    ok_access_token, ok_app_key,
-                    ok_group_id, ok_secret_key,
-                    img_path
-                ),
+                row_num, plat,
+                publish_func=publish_func,
                 publish_args=(),
                 col_idx=col_idx, row=row,
-                is_enabled=True
+                is_enabled=is_enabled, is_selected=True
             )
 
     except Exception as e:
@@ -443,6 +447,10 @@ def main():
         init_worksheet(worksheet)
         logger.info('Google Sheets авторизован')
         print('✅ Google Sheets подключён')
+    except requests.exceptions.ConnectionError as e:
+        logger.critical(f'Ошибка сети Google Sheets: {e}')
+        print('❌ Ошибка сети. Проверьте интернет и перезапустите.')
+        sys.exit(1)
     except FileNotFoundError:
         logger.critical(f'Файл credentials не найден: {credentials_path}')
         print(f'❌ Файл credentials не найден: {credentials_path}')

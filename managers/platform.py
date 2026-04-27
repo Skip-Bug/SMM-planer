@@ -43,15 +43,16 @@ def update_platform_error(row_num, platform, error_msg, counter):
 
     Args:
         row_num: Номер строки.
-        platform: Название платформы.
+        platform: Название платформы ('TG', 'VK', 'OK').
         error_msg: Текст ошибки.
         counter: Счётчик попыток.
     """
-    batch_update_by_headers(0, row_num, {
+    err_upd = {
         f'{platform} Статус': STATUS['ERROR'],
         f'{platform} Ошибка': error_msg[:500],
         f'{platform} Счетчик ошибок': str(counter)
-    })
+    }
+    batch_update_by_headers(row_num, err_upd)
 
 
 def update_platform_success(row_num, platform, post_id):
@@ -59,15 +60,16 @@ def update_platform_success(row_num, platform, post_id):
 
     Args:
         row_num: Номер строки.
-        platform: Название платформы.
-        post_id: ID поста.
+        platform: Название платформы ('TG', 'VK', 'OK').
+        post_id: ID опубликованного поста.
     """
-    batch_update_by_headers(0, row_num, {
+    succ_upd = {
         f'{platform} Статус': STATUS['PUBLISHED'],
         f'{platform} id поста': str(post_id),
         f'{platform} Ошибка': '',
         f'{platform} Счетчик ошибок': ''
-    })
+    }
+    batch_update_by_headers(row_num, succ_upd)
 
 
 def reset_replay_to_pending(row_num, platform):
@@ -75,13 +77,14 @@ def reset_replay_to_pending(row_num, platform):
 
     Args:
         row_num: Номер строки.
-        platform: Название платформы.
+        platform: Название платформы ('TG', 'VK', 'OK').
     """
-    batch_update_by_headers(0, row_num, {
+    pend_upd = {
         f'{platform} Статус': STATUS['PENDING'],
         f'{platform} Ошибка': '',
         f'{platform} Счетчик ошибок': ''
-    })
+    }
+    batch_update_by_headers(row_num, pend_upd)
 
 
 def handle_platform_delete(

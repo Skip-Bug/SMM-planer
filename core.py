@@ -371,7 +371,8 @@ def process_row(
         ok_status = get_platform_state(row, col_idx, 'OK')[0]
 
         # Определяем платформы для публикации
-        # Если есть REPLAY — публикуем только платформу с REPLAY
+        # REPLAY всегда публикуем (приоритет)
+        # Если нет REPLAY — используем флаги, но пропускаем DELETED
         if tg_status == STATUS['REPLAY']:
             platforms_to_publish = [('TG', tg_enabled, lambda: publish_tg(tg_bot, tg_channel, clear_text, img_path))]
         elif vk_status == STATUS['REPLAY']:
@@ -379,13 +380,13 @@ def process_row(
         elif ok_status == STATUS['REPLAY']:
             platforms_to_publish = [('OK', ok_enabled, lambda: publish_ok(clear_text, ok_access_token, ok_app_key, ok_group_id, ok_secret_key, img_path))]
         else:
-            # Нет REPLAY — используем флаги
+            # Нет REPLAY — проверяем: дата прошла ИЛИ даты нет, и флаг установлен
             platforms_to_publish = []
-            if tg_enabled and tg_flag:
+            if tg_enabled and tg_flag and tg_status != STATUS['DELETED']:
                 platforms_to_publish.append(('TG', True, lambda: publish_tg(tg_bot, tg_channel, clear_text, img_path)))
-            if vk_enabled and vk_flag:
+            if vk_enabled and vk_flag and vk_status != STATUS['DELETED']:
                 platforms_to_publish.append(('VK', True, lambda: publish_vk(vk_token, vk_owner_int, clear_text, img_path)))
-            if ok_enabled and ok_flag:
+            if ok_enabled and ok_flag and ok_status != STATUS['DELETED']:
                 platforms_to_publish.append(('OK', True, lambda: publish_ok(clear_text, ok_access_token, ok_app_key, ok_group_id, ok_secret_key, img_path)))
 
         # Публикуем выбранные платформы

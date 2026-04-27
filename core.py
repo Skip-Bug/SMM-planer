@@ -106,7 +106,8 @@ def process_row(
                     })
                     print(f'   🗑️ Строка {row_num}: TG удален (ID: {tg_id})')
                 except Exception as e:
-                    print(f'Строка {row_num}: TG ошибка удаления/обновления: {e}')
+                    print(
+                        f'Строка {row_num}: TG ошибка удаления/обновления:{e}')
 
             # --- VKONTAKTE (один ID на весь пост) ---
             vk_status = get_field(row, col_idx, 'VK Статус')
@@ -121,7 +122,8 @@ def process_row(
                     })
                     print(f'   🗑️ Строка {row_num}: VK удален (ID: {vk_id})')
                 except Exception as e:
-                    print(f'Строка {row_num}: VK ошибка удаления/обновления: {e}')
+                    print(
+                        f'Строка {row_num}: VK ошибка удаления/обновления:{e}')
 
             # --- OK.ru ---
             ok_status = get_field(row, col_idx, 'OK Статус')
@@ -135,7 +137,8 @@ def process_row(
                         'OK Статус': STATUS['DELETED'],
                         'OK id поста': ''
                     })
-                    print(f'   🗑️ Строка {row_num}: OK.ru удален (ID: {ok_id})')
+                    print(
+                        f'   🗑️ Строка {row_num}: OK.ru удален (ID: {ok_id})')
                 except Exception as e:
                     err_msg = f'OK.ru ошибка удаления/обновления: {e}'
                     print(f'Строка {row_num}: {err_msg}')
@@ -221,7 +224,8 @@ def process_row(
                     }
                     batch_update_by_headers(0, row_num, updates)
                     print(
-                        f'   ✅ Строка {row_num}: TG опубликован (ID: {post_id})')
+                        f'Строка {row_num}: TG опубликован (ID: {post_id})'
+                    )
                 else:
                     updates = {'TG Статус': STATUS['ERROR'], 'TG id поста': ''}
                     batch_update_by_headers(0, row_num, updates)
@@ -250,7 +254,8 @@ def process_row(
                     }
                     batch_update_by_headers(0, row_num, updates)
                     print(
-                        f'   ✅ Строка {row_num}: VK опубликован (ID: {post_id})')
+                        f'Строка {row_num}: VK опубликован (ID: {post_id})'
+                    )
                 else:
                     updates = {'VK Статус': STATUS['ERROR'], 'VK id поста': ''}
                     batch_update_by_headers(0, row_num, updates)
@@ -276,12 +281,13 @@ def process_row(
                     }
                     batch_update_by_headers(0, row_num, updates)
                     print(
-                        f'   ✅ Строка {row_num}: OK.ru опубликован (ID: {post_id})')
+                        f'Строка {row_num}: OK.ru опубликован (ID: {post_id})'
+                        )
                 else:
                     updates = {'OK Статус': STATUS['ERROR'], 'OK id поста': ''}
                     batch_update_by_headers(0, row_num, updates)
                     print(
-                        f'   ❌ Строка {row_num}: OK.ru API ошибка - ID не найден')
+                        f'❌ Строка {row_num}: OK.ru API ошибка - ID не найден')
             except requests.RequestException as e:
                 updates = {'OK Статус': STATUS['ERROR'], 'OK id поста': ''}
                 batch_update_by_headers(0, row_num, updates)

@@ -135,13 +135,7 @@ def handle_platform_publish(
 
     is_published = status == STATUS['PUBLISHED']
     is_error = status == STATUS['ERROR']
-    is_replay = status == STATUS['REPLAY']
     can_retry = is_error and counter < MAX_RETRIES
-
-    # Обработка ручного повтора
-    if is_replay:
-        reset_replay_to_pending(row_num, platform)
-        logger.info(f'Строка {row_num}: {platform} ручной повтор – сброс')
 
     if is_published:
         return True

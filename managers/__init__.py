@@ -3,6 +3,7 @@ from managers.platform import (
     handle_platform_delete,
     handle_platform_publish,
     get_platform_state,
+    reset_replay_to_pending,
     STATUS
 )
 from managers.accounts import (
@@ -21,6 +22,7 @@ __all__ = [
     'handle_platform_delete',
     'handle_platform_publish',
     'get_platform_state',
+    'reset_replay_to_pending',
     'STATUS',
     'load_accounts_from_sheet',
     'get_account',

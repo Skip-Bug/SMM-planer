@@ -20,6 +20,7 @@ from managers import (
     handle_platform_delete,
     handle_platform_publish,
     get_platform_state,
+    reset_replay_to_pending,
     STATUS,
     init_worksheet
 )
@@ -243,6 +244,196 @@ def _get_vk_credentials(
         )
 
 
+# Константы платформ
+PLATFORMS = [
+    ('Telegram', 'TG'),
+    ('VK', 'VK'),
+    ('OK.ru', 'OK'),
+]
+
+
+def _handle_deletion(
+        row, row_num, col_idx,
+        tg_bot, tg_channel,
+        vk_enabled, vk_token, vk_owner_int,
+        ok_enabled, ok_access_token, ok_app_key,
+        ok_group_id, ok_secret_key
+):
+    """Обработка удаления поста на всех платформах.
+
+    Returns:
+        bool: True если удаление выполнено.
+    """
+    # Telegram
+    tg_id = get_field(row, col_idx, 'TG id поста')
+    tg_status = get_field(row, col_idx, 'TG Статус')
+    if tg_bot and tg_channel and tg_id and tg_status != STATUS['DELETED']:
+        handle_platform_delete(
+            'TG', tg_id, row_num,
+            _delete_tg, (tg_bot, tg_channel, tg_id, row_num)
+        )
+
+    # VK
+    vk_id = get_field(row, col_idx, 'VK id поста')
+    vk_status = get_field(row, col_idx, 'VK Статус')
+    if vk_enabled and vk_id and vk_status != STATUS['DELETED']:
+        handle_platform_delete(
+            'VK', vk_id, row_num,
+            _delete_vk, (vk_token, vk_owner_int, vk_id, row_num)
+        )
+
+    # OK.ru
+    ok_id = get_field(row, col_idx, 'OK id поста')
+    ok_status = get_field(row, col_idx, 'OK Статус')
+    if ok_enabled and ok_id and ok_status != STATUS['DELETED']:
+        handle_platform_delete(
+            'OK', ok_id, row_num,
+            _delete_ok, (
+                ok_id, row_num,
+                ok_access_token, ok_app_key,
+                ok_group_id, ok_secret_key
+            )
+        )
+    return True
+
+
+def _handle_pending_date(row, row_num, col_idx, now):
+    """Обработка ожидания даты публикации.
+
+    Returns:
+        bool: True если нужно ждать (дата в будущем).
+    """
+    pub_time = parse_datetime_ru(get_field(row, col_idx, 'Дата публикации'))
+    if not pub_time or pub_time <= now:
+        return False
+
+    time_pub = pub_time.strftime("%d.%m.%Y %H:%M")
+    logger.info(f'Строка {row_num}: ожидание (дата: {time_pub})')
+
+    # Обновляем статусы для выбранных платформ
+    pending_updates = {}
+    for plat_full, plat_short in PLATFORMS:
+        flag_col = f'{plat_short} Отправить'
+        flag = get_field(row, col_idx, flag_col).upper() == 'TRUE'
+        status = get_platform_state(row, col_idx, plat_short)[0]
+        if flag and status not in (STATUS['PUBLISHED'], STATUS['DELETED']):
+            pending_updates[f'{plat_short} Статус'] = STATUS['PENDING']
+            pending_updates[f'{plat_short} Ошибка'] = ''
+            pending_updates[f'{plat_short} Счетчик ошибок'] = ''
+
+    if pending_updates:
+        batch_update_by_headers(row_num, pending_updates)
+    return True
+
+
+def _load_content_or_skip(row, row_num, col_idx):
+    """Загрузка контента (текст + картинка).
+
+    Returns:
+        tuple: (clear_text, img_path) или None если пост пустой.
+    """
+    text_raw = get_field(row, col_idx, 'Пост')
+    if not text_raw:
+        logger.debug(f'Строка {row_num}: пропуск (пустой пост)')
+        return None
+
+    not_format_text = load_content(text_raw)
+    clear_text = clean_text(not_format_text)
+    img_path = load_image(get_field(row, col_idx, 'Картинка'))
+    return clear_text, img_path
+
+
+def _get_platform_publish_info(
+        platform_full, platform_short, row, row_num, col_idx, ctx
+):
+    """Получает информацию о публикации для платформы.
+
+    Args:
+        platform_full: Полное название ('Telegram', 'VK', 'OK.ru').
+        platform_short: Короткое название ('TG', 'VK', 'OK').
+        row, row_num, col_idx: Данные строки таблицы.
+        ctx: Контекст с credentials и контентом.
+
+    Returns:
+        tuple: (is_enabled, is_selected, publish_func) или None.
+    """
+    status = get_platform_state(row, col_idx, platform_short)[0]
+    flag_col = f'{platform_short} Отправить'
+    flag = get_field(row, col_idx, flag_col).upper() == 'TRUE'
+
+    # Конфигурация платформ
+    platform_config = {
+        'TG': {
+            'is_enabled': bool(ctx['tg_bot'] and ctx['tg_channel']),
+            'publish_func': lambda: publish_tg(
+                ctx['tg_bot'], ctx['tg_channel'],
+                ctx['clear_text'], ctx['img_path']
+            )
+        },
+        'VK': {
+            'is_enabled': bool(ctx['vk_token'] and ctx['vk_owner_int']),
+            'publish_func': lambda: publish_vk(
+                ctx['vk_token'], ctx['vk_owner_int'],
+                ctx['clear_text'], ctx['img_path']
+            )
+        },
+        'OK': {
+            'is_enabled': ctx['ok_enabled'],
+            'publish_func': lambda: publish_ok(
+                ctx['clear_text'], ctx['ok_access_token'],
+                ctx['ok_app_key'], ctx['ok_group_id'],
+                ctx['ok_secret_key'], ctx['img_path']
+            )
+        }
+    }
+
+    config = platform_config.get(platform_short)
+    if not config:
+        return None
+
+    is_enabled = config['is_enabled']
+    publish_func = config['publish_func']
+
+    # Ручной повтор (REPLAY)
+    if status == STATUS['REPLAY']:
+        reset_replay_to_pending(row_num, platform_short)
+        logger.info(f'Строка {row_num}: {platform_full} ручной повтор')
+        return is_enabled, True, publish_func
+
+    # Флаг + НЕ DELETED
+    if flag and status != STATUS['DELETED'] and is_enabled:
+        return is_enabled, True, publish_func
+
+    return None
+
+
+def _publish_to_all_platforms(row, row_num, col_idx, content, ctx):
+    """Публикация контента на всех выбранных платформах.
+
+    Args:
+        row, row_num, col_idx: Данные строки таблицы.
+        content: Кортеж (clear_text, img_path).
+        ctx: Контекст с credentials.
+    """
+    clear_text, img_path = content
+    ctx['clear_text'] = clear_text
+    ctx['img_path'] = img_path
+
+    for platform_full, platform_short in PLATFORMS:
+        result = _get_platform_publish_info(
+            platform_full, platform_short, row, row_num, col_idx, ctx
+        )
+        if result:
+            is_enabled, is_selected, publish_func = result
+            handle_platform_publish(
+                row_num, platform_short,
+                publish_func=publish_func,
+                publish_args=(),
+                col_idx=col_idx, row=row,
+                is_enabled=is_enabled, is_selected=is_selected
+            )
+
+
 def process_row(
     row, row_num, col_idx,
     now, tg_bot, tg_channel,
@@ -281,123 +472,41 @@ def process_row(
 
         # 1. Удаление
         del_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
-        del_time = parse_datetime_ru(
-            get_field(row, col_idx, 'Дата удаления'))
+        del_time = parse_datetime_ru(get_field(row, col_idx, 'Дата удаления'))
         should_delete = del_flag or (del_time and del_time <= now)
 
         if should_delete:
-            # TG
-            tg_id = get_field(row, col_idx, 'TG id поста')
-            tg_status = get_field(row, col_idx, 'TG Статус')
-            tg_del_cond = (
-                tg_bot and tg_channel and tg_id
-                and tg_status != STATUS['DELETED']
+            _handle_deletion(
+                row, row_num, col_idx,
+                tg_bot, tg_channel,
+                vk_enabled, vk_token, vk_owner_int,
+                ok_enabled, ok_access_token, ok_app_key,
+                ok_group_id, ok_secret_key
             )
-            if tg_del_cond:
-                handle_platform_delete(
-                    'TG', tg_id, row_num,
-                    _delete_tg, (tg_bot, tg_channel, tg_id, row_num)
-                )
-
-            # VK
-            vk_id = get_field(row, col_idx, 'VK id поста')
-            vk_status = get_field(row, col_idx, 'VK Статус')
-            vk_del_cond = (
-                vk_enabled and vk_id and vk_status != STATUS['DELETED']
-            )
-            if vk_del_cond:
-                handle_platform_delete(
-                    'VK', vk_id, row_num,
-                    _delete_vk, (vk_token, vk_owner_int, vk_id, row_num)
-                )
-
-            # OK
-            ok_id = get_field(row, col_idx, 'OK id поста')
-            ok_status = get_field(row, col_idx, 'OK Статус')
-            ok_del_cond = (
-                ok_enabled and ok_id and ok_status != STATUS['DELETED']
-            )
-            if ok_del_cond:
-                handle_platform_delete(
-                    'OK', ok_id, row_num,
-                    _delete_ok, (
-                        ok_id, row_num,
-                        ok_access_token, ok_app_key,
-                        ok_group_id, ok_secret_key
-                    )
-                )
             return
 
-        # 2. Ожидание
-        pub_time = parse_datetime_ru(
-            get_field(row, col_idx, 'Дата публикации'))
-        tg_flag = get_field(row, col_idx, 'TG Отправить').upper() == 'TRUE'
-        vk_flag = get_field(row, col_idx, 'VK Отправить').upper() == 'TRUE'
-        ok_flag = get_field(row, col_idx, 'OK Отправить').upper() == 'TRUE'
-
-        if pub_time and pub_time > now:
-            time_pub = pub_time.strftime("%d.%m.%Y %H:%M")
-            logger.info(f'Строка {row_num}: ожидание (дата: {time_pub})')
-
-            plat_list = [('TG', tg_flag), ('VK', vk_flag), ('OK', ok_flag)]
-            pend_upd = {}
-
-            for plat, flag in plat_list:
-                status = get_platform_state(row, col_idx, plat)[0]
-                if flag and status not in (
-                        STATUS['PUBLISHED'], STATUS['DELETED']):
-                    pend_upd[f'{plat} Статус'] = STATUS['PENDING']
-                    pend_upd[f'{plat} Ошибка'] = ''
-                    pend_upd[f'{plat} Счетчик ошибок'] = ''
-
-            if pend_upd:
-                batch_update_by_headers(row_num, pend_upd)
+        # 2. Ожидание даты публикации
+        if _handle_pending_date(row, row_num, col_idx, now):
             return
 
-        # 3. Контент
-        text_raw = get_field(row, col_idx, 'Пост')
-        if not text_raw:
-            logger.debug(f'Строка {row_num}: пропуск (пустой пост)')
+        # 3. Загрузка контента
+        content = _load_content_or_skip(row, row_num, col_idx)
+        if not content:
             return
-        not_format_text = load_content(text_raw)
-        clear_text = clean_text(not_format_text)
-        img_path = load_image(get_field(row, col_idx, 'Картинка'))
 
-        # 4. Публикация
-        tg_enabled = bool(tg_bot and tg_channel)
-
-        tg_status = get_platform_state(row, col_idx, 'TG')[0]
-        vk_status = get_platform_state(row, col_idx, 'VK')[0]
-        ok_status = get_platform_state(row, col_idx, 'OK')[0]
-
-        # Определяем платформы для публикации
-        # REPLAY всегда публикуем (приоритет)
-        # Если нет REPLAY — используем флаги, но пропускаем DELETED
-        if tg_status == STATUS['REPLAY']:
-            platforms_to_publish = [('TG', tg_enabled, lambda: publish_tg(tg_bot, tg_channel, clear_text, img_path))]
-        elif vk_status == STATUS['REPLAY']:
-            platforms_to_publish = [('VK', vk_enabled, lambda: publish_vk(vk_token, vk_owner_int, clear_text, img_path))]
-        elif ok_status == STATUS['REPLAY']:
-            platforms_to_publish = [('OK', ok_enabled, lambda: publish_ok(clear_text, ok_access_token, ok_app_key, ok_group_id, ok_secret_key, img_path))]
-        else:
-            # Нет REPLAY — проверяем: дата прошла ИЛИ даты нет, и флаг установлен
-            platforms_to_publish = []
-            if tg_enabled and tg_flag and tg_status != STATUS['DELETED']:
-                platforms_to_publish.append(('TG', True, lambda: publish_tg(tg_bot, tg_channel, clear_text, img_path)))
-            if vk_enabled and vk_flag and vk_status != STATUS['DELETED']:
-                platforms_to_publish.append(('VK', True, lambda: publish_vk(vk_token, vk_owner_int, clear_text, img_path)))
-            if ok_enabled and ok_flag and ok_status != STATUS['DELETED']:
-                platforms_to_publish.append(('OK', True, lambda: publish_ok(clear_text, ok_access_token, ok_app_key, ok_group_id, ok_secret_key, img_path)))
-
-        # Публикуем выбранные платформы
-        for plat, is_enabled, publish_func in platforms_to_publish:
-            handle_platform_publish(
-                row_num, plat,
-                publish_func=publish_func,
-                publish_args=(),
-                col_idx=col_idx, row=row,
-                is_enabled=is_enabled, is_selected=True
-            )
+        # 4. Публикация на всех платформах
+        ctx = {
+            'tg_bot': tg_bot,
+            'tg_channel': tg_channel,
+            'vk_token': vk_token,
+            'vk_owner_int': vk_owner_int,
+            'ok_enabled': ok_enabled,
+            'ok_access_token': ok_access_token,
+            'ok_app_key': ok_app_key,
+            'ok_group_id': ok_group_id,
+            'ok_secret_key': ok_secret_key,
+        }
+        _publish_to_all_platforms(row, row_num, col_idx, content, ctx)
 
     except Exception as e:
         logger.error(

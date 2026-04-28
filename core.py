@@ -660,16 +660,15 @@ def process_row(
 # ------------------- ГЛАВНЫЙ ЦИКЛ -------------------
 
 
-def main():
-    """Основной цикл программы.
-
-    Инициализирует Google Sheets, платформы и запускает цикл обработки.
+def _init_google_sheets():
+    """Инициализирует подключение к Google Sheets.
+    
+    Returns:
+        tuple: (worksheet, spreadsheet_id) если успешно.
+        
+    Raises:
+        SystemExit: При критической ошибке инициализации.
     """
-    load_dotenv()
-    print('🚀 SMM Planner: Оркестратор запущен')
-    print('=' * 50)
-
-    # ---------- ИНИЦИАЛИЗАЦИЯ GOOGLE SHEETS ----------
     spreadsheet_id = os.getenv('SPREADSHEET_ID')
     credentials_path = os.getenv('CREDENTIALS_PATH', 'credentials.json')
 
@@ -698,6 +697,8 @@ def main():
         init_worksheet(worksheet)
         logger.info('Google Sheets авторизован')
         print('✅ Google Sheets подключён')
+        return worksheet, spreadsheet_id
+        
     except requests.exceptions.ConnectionError as e:
         logger.critical(f'Ошибка сети Google Sheets: {e}')
         print('❌ Ошибка сети. Проверьте интернет и перезапустите.')
@@ -719,7 +720,15 @@ def main():
         print('❌ Ошибка подключения к Google Sheets')
         sys.exit(1)
 
-    # ---------- ИНИЦИАЛИЗАЦИЯ ПЛАТФОРМ ----------
+
+def _init_platforms():
+    """Инициализирует платформы и загружает VK аккаунты.
+    
+    Returns:
+        tuple: (tg_bot, tg_channel, vk_token, vk_owner_int, 
+                ok_enabled, ok_access_token, ok_app_key,
+                ok_group_id, ok_secret_key, vk_accounts)
+    """
     tg_token = os.getenv('TG_BOT_TOKEN')
     tg_channel = os.getenv('TG_CHANNEL_ID')
     vk_token = os.getenv('VK_KEY')
@@ -731,10 +740,12 @@ def main():
 
     ok_enabled = all([ok_app_key, ok_access_token, ok_secret_key, ok_group_id])
 
+    # Инициализация Telegram
     tg_bot = Bot(token=tg_token) if tg_token and tg_channel else None
     if not tg_bot:
         print('⚠️ Telegram отключена (нет токена или канала)')
 
+    # Инициализация VK
     vk_owner_int = None
     if vk_owner_raw:
         try:
@@ -745,6 +756,7 @@ def main():
     if not (vk_token and vk_owner_int):
         print('⚠️ VK отключена (нет токена или owner ID)')
 
+    # Инициализация OK.ru
     if not ok_enabled:
         print('⚠️ OK.ru отключена (нет всех необходимых переменных)')
     else:
@@ -754,6 +766,26 @@ def main():
     vk_accounts = load_accounts_from_sheet(sheet_index=1)
     vk_accounts_count = len(vk_accounts.get('VK', {}))
     print(f'📦 Загружено VK аккаунтов: {vk_accounts_count}')
+
+    return (
+        tg_bot, tg_channel,
+        vk_token, vk_owner_int,
+        ok_enabled, ok_access_token, ok_app_key,
+        ok_group_id, ok_secret_key,
+        vk_accounts
+    )
+
+
+def _main_loop(worksheet, platforms):
+    """Основной цикл обработки строк таблицы.
+    
+    Args:
+        worksheet: Рабочий лист Google Sheets.
+        platforms: Кортеж с инициализированными платформами.
+    """
+    tg_bot, tg_channel, vk_token, vk_owner_int, \
+        ok_enabled, ok_access_token, ok_app_key, \
+        ok_group_id, ok_secret_key, vk_accounts = platforms
 
     while True:
         try:
@@ -789,6 +821,25 @@ def main():
             logger.critical(
                 f'Критическая ошибка цикла: {e}', exc_info=True)
             time.sleep(POLL_INTERVAL)
+
+
+def main():
+    """Основной цикл программы.
+
+    Инициализирует Google Sheets, платформы и запускает цикл обработки.
+    """
+    load_dotenv()
+    print('🚀 SMM Planner: Оркестратор запущен')
+    print('=' * 50)
+
+    # Инициализация Google Sheets
+    worksheet, _ = _init_google_sheets()
+    
+    # Инициализация платформ
+    platforms = _init_platforms()
+    
+    # Запуск основного цикла
+    _main_loop(worksheet, platforms)
 
 
 if __name__ == '__main__':

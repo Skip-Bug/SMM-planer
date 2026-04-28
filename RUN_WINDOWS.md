@@ -27,24 +27,6 @@
 
 ---
 
-### 3. **install_service.bat** - Служба Windows
-```bash
-# От имени администратора!
-./install_service.bat
-```
-- ✅ Устанавливает как службу Windows
-- ✅ Автозапуск при загрузке ОС
-- ✅ Требует **nssm** (https://nssm.cc/download)
-- 📌 **Для:** Продакшена, постоянной работы
-
-**Управление службой:**
-```bash
-nssm edit SMM_Planner   # Изменить настройки
-nssm stop SMM_Planner   # Остановить
-nssm start SMM_Planner  # Запустить
-nssm remove SMM_Planner # Удалить
-```
-
 ---
 
 ## 🔧 Требования
@@ -53,7 +35,6 @@ nssm remove SMM_Planner # Удалить
 |------|------------|
 | `run_smm.bat` | Python 3.10+ |
 | `start_smm.bat` | Python 3.10+ |
-| `install_service.bat` | Python 3.10+, **nssm**, права админа |
 
 ---
 
@@ -64,7 +45,6 @@ SMM-planer/
 ├── core.py              # Основной скрипт
 ├── run_smm.bat          # Разовый запуск
 ├── start_smm.bat        # Автоперезапуск ⭐
-├── install_service.bat  # Служба Windows
 └── ...
 ```
 
@@ -76,7 +56,6 @@ SMM-planer/
 |----------|------|
 | **Тестирование** | `run_smm.bat` |
 | **Сервер (простой)** | `start_smm.bat` |
-| **Сервер (продакшен)** | `install_service.bat` |
 
 ---
 

@@ -11,7 +11,7 @@ STATUS = {
     'PUBLISHED': 'Опубликован',
     'PENDING': 'Ждет публикации',
     'ERROR': 'Ошибка публикации',
-    'DELETED': 'Удален'
+    'DELETED': 'Удален',
 }
 MAX_RETRIES = 3
 
@@ -111,7 +111,7 @@ def handle_platform_delete(
 
 def handle_platform_publish(
     row_num, platform, publish_func, publish_args,
-    col_idx, row, is_enabled, is_selected=False
+    col_idx, row, is_enabled
 ):
     """Универсальная публикация с повторными попытками.
 
@@ -123,7 +123,7 @@ def handle_platform_publish(
         col_idx: Словарь колонок.
         row: Строка таблицы.
         is_enabled: Флаг включения платформы.
-        is_selected: Флаг выбора платформы для этой строки.
+
 
     Returns:
         bool: True если публикация успешна.

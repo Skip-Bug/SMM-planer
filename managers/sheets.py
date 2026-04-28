@@ -5,47 +5,49 @@
 
 SHEET_INDEX = 0
 
-# Глобальный объект worksheet (инициализируется в core.py)
-_worksheet = None
+_spreadsheet = None
 
 
-def init_worksheet(worksheet):
-    """Инициализирует глобальный worksheet.
+def init_spreadsheet(spreadsheet):
+    """Инициализирует глобальный spreadsheet.
 
     Args:
-        worksheet: gspread.Worksheet объект.
+        spreadsheet: gspread.Spreadsheet объект.
     """
-    global _worksheet
-    _worksheet = worksheet
+    global _spreadsheet
+    _spreadsheet = spreadsheet
 
 
-def get_worksheet():
-    """Возвращает инициализированный worksheet.
+def get_worksheet(sheet_index=SHEET_INDEX):
+    """Возвращает worksheet по индексу.
+
+    Args:
+        sheet_index: Индекс листа (0 – первый).
 
     Returns:
         gspread.Worksheet: Объект листа.
 
     Raises:
-        RuntimeError: Если worksheet не инициализирован.
+        RuntimeError: Если spreadsheet не инициализирован.
     """
-    if _worksheet is None:
+    if _spreadsheet is None:
         raise RuntimeError(
-            'Worksheet не инициализирован. '
-            'Вызовите init_worksheet() в main()'
+            'Spreadsheet не инициализирован. '
+            'Вызовите init_spreadsheet() в main()'
         )
-    return _worksheet
+    return _spreadsheet.get_worksheet(sheet_index)
 
 
 def get_rows_with_numbers(sheet_index=SHEET_INDEX):
-    """Возвращает данные с номерами строк для обновления.
+    """Возвращает данные с номерами строк для указанного листа.
 
     Args:
-        sheet_index: Индекс листа (игнорируется, используется глобальный).
+        sheet_index: Индекс листа.
 
     Returns:
         tuple: (rows, row_numbers, headers)
     """
-    ws = get_worksheet()
+    ws = get_worksheet(sheet_index)
     all_vals = ws.get_all_values()
 
     if not all_vals:

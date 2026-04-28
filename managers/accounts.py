@@ -35,7 +35,6 @@ def load_accounts_from_sheet(
 
     col_idx = {h: i for i, h in enumerate(headers)}
     accounts = {'TG': {}, 'VK': {}, 'OK': {}}
-    seen_names = set()
 
     for row in rows:
         platform = get_field(row, col_idx, 'Platform').upper()
@@ -47,12 +46,12 @@ def load_accounts_from_sheet(
         elif platform == 'TG':
             # TODO: Поддержка TG мультиаккаунтов
             logger.debug(
-                f'Платформа TG пока не поддерживается — строка пропущена')
+                'Платформа TG пока не поддерживается — строка пропущена')
             continue
         elif platform == 'OK':
             # TODO: Поддержка OK мультиаккаунтов
             logger.debug(
-                f'Платформа OK пока не поддерживается — строка пропущена')
+                'Платформа OK пока не поддерживается — строка пропущена')
             continue
         else:
             if platform:
@@ -113,13 +112,13 @@ def _parse_vk_fields(
 
 
 # TODO: Добавить поддержку TG
-def _parse_tg_fields(row, col_idx, name):
+def _parse_tg_fields(_row, _col_idx, _name):
     """Заглушка для TG аккаунтов."""
     raise NotImplementedError('TG мультиаккаунты пока не поддерживаются')
 
 
 # TODO: Добавить поддержку OK
-def _parse_ok_fields(row, col_idx, name):
+def _parse_ok_fields(_row, _col_idx, _name):
     """Заглушка для OK аккаунтов."""
     raise NotImplementedError('OK мультиаккаунты пока не поддерживаются')
 

@@ -21,7 +21,7 @@ from managers import (
     get_platform_state,
     reset_replay_to_pending,
     STATUS,
-    init_worksheet
+    init_spreadsheet
 )
 from managers.accounts import (
     load_accounts_from_sheet,
@@ -48,7 +48,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ------------------- КОНСТАНТЫ -------------------
-POLL_INTERVAL = 5  # интервал опроса таблицы (сек)
+POLL_INTERVAL = 20  # интервал опроса таблицы (сек)
 
 
 def _delete_tg(bot, channel, post_id, row_num):
@@ -226,21 +226,24 @@ def _get_vk_credentials(
         return fallback_token, fallback_owner_int, 'используется .env'
 
     vk_account = get_account('VK', vk_account_name, vk_accounts)
+
     if vk_account:
         # Аккаунт найден — используем его
         return (
             vk_account['token'],
             vk_account['owner_id'],
-            f'аккаунт {vk_account_name}'
+            f'аккаунт {vk_account_name}',
         )
     else:
         # Аккаунт указан, но не найден — fallback на .env + предупреждение
         logger.warning(
             f'Строка {row_num}: VK аккаунт "{vk_account_name}" '
-            f'не найден — используется .env')
+            f'не найден — используется .env'
+        )
         return (
-            fallback_token, fallback_owner_int,
-            'не найден, используется .env'
+            fallback_token,
+            fallback_owner_int,
+            'не найден, используется .env',
         )
 
 
@@ -250,6 +253,116 @@ PLATFORMS = [
     ('VK', 'VK'),
     ('OK.ru', 'OK'),
 ]
+
+
+def _handle_tg_deletion(row, row_num, col_idx, tg_bot, tg_channel):
+    """Удаление поста в Telegram, если требуется.
+
+    Args:
+        row: Строка таблицы.
+        row_num: Номер строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        tg_bot: Экземпляр Telegram Bot.
+        tg_channel: ID канала.
+
+    Returns:
+        bool: True если удаление было выполнено.
+    """
+    tg_id = get_field(row, col_idx, 'TG id поста')
+    tg_status = get_field(row, col_idx, 'TG Статус')
+
+    if not (tg_bot and tg_channel and tg_id
+            and tg_status != STATUS['DELETED']):
+        return False  # Не нужно удалять
+
+    handle_platform_delete(
+        'TG',
+        tg_id,
+        row_num,
+        _delete_tg,
+        (
+            tg_bot,
+            tg_channel,
+            tg_id,
+            row_num,
+        ),
+    )
+    return True
+
+
+def _handle_vk_deletion(row, row_num, col_idx, vk_token, vk_owner_int):
+    """Удаление поста в VK, если требуется.
+
+    Args:
+        row: Строка таблицы.
+        row_num: Номер строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        vk_token: Сервисный ключ ВКонтакте.
+        vk_owner_int: ID владельца.
+
+    Returns:
+        bool: True если удаление было выполнено.
+    """
+    vk_id = get_field(row, col_idx, 'VK id поста')
+    vk_status = get_field(row, col_idx, 'VK Статус')
+
+    if not (vk_token and vk_owner_int and vk_id
+            and vk_status != STATUS['DELETED']):
+        return False  # Не нужно удалять
+
+    handle_platform_delete(
+        'VK',
+        vk_id,
+        row_num,
+        _delete_vk,
+        (
+            vk_token,
+            vk_owner_int,
+            vk_id,
+            row_num,
+        ),
+    )
+    return True
+
+
+def _handle_ok_deletion(row, row_num, col_idx, ok_access_token, ok_app_key,
+                        ok_group_id, ok_secret_key):
+    """Удаление поста в OK.ru, если требуется.
+
+    Args:
+        row: Строка таблицы.
+        row_num: Номер строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        ok_access_token: Токен доступа OK.ru.
+        ok_app_key: Ключ приложения OK.ru.
+        ok_group_id: ID группы OK.ru.
+        ok_secret_key: Секретный ключ OK.ru.
+
+    Returns:
+        bool: True если удаление было выполнено.
+    """
+    ok_id = get_field(row, col_idx, 'OK id поста')
+    ok_status = get_field(row, col_idx, 'OK Статус')
+
+    if not (ok_access_token and ok_group_id and ok_id
+            and ok_status != STATUS['DELETED']):
+        return False  # Не нужно удалять
+
+    handle_platform_delete(
+        'OK',
+        ok_id,
+        row_num,
+        _delete_ok,
+        (
+            ok_id,
+            row_num,
+            ok_access_token,
+            ok_app_key,
+            ok_group_id,
+            ok_secret_key,
+        ),
+    )
+    return True
 
 
 def _handle_deletion(
@@ -264,37 +377,25 @@ def _handle_deletion(
     Returns:
         bool: True если удаление выполнено.
     """
+    deletions_done = False
+
     # Telegram
-    tg_id = get_field(row, col_idx, 'TG id поста')
-    tg_status = get_field(row, col_idx, 'TG Статус')
-    if tg_bot and tg_channel and tg_id and tg_status != STATUS['DELETED']:
-        handle_platform_delete(
-            'TG', tg_id, row_num,
-            _delete_tg, (tg_bot, tg_channel, tg_id, row_num)
-        )
+    if tg_bot and tg_channel:
+        if _handle_tg_deletion(row, row_num, col_idx, tg_bot, tg_channel):
+            deletions_done = True
 
     # VK
-    vk_id = get_field(row, col_idx, 'VK id поста')
-    vk_status = get_field(row, col_idx, 'VK Статус')
-    if vk_enabled and vk_id and vk_status != STATUS['DELETED']:
-        handle_platform_delete(
-            'VK', vk_id, row_num,
-            _delete_vk, (vk_token, vk_owner_int, vk_id, row_num)
-        )
+    if vk_enabled and vk_token and vk_owner_int:
+        if _handle_vk_deletion(row, row_num, col_idx, vk_token, vk_owner_int):
+            deletions_done = True
 
     # OK.ru
-    ok_id = get_field(row, col_idx, 'OK id поста')
-    ok_status = get_field(row, col_idx, 'OK Статус')
-    if ok_enabled and ok_id and ok_status != STATUS['DELETED']:
-        handle_platform_delete(
-            'OK', ok_id, row_num,
-            _delete_ok, (
-                ok_id, row_num,
-                ok_access_token, ok_app_key,
-                ok_group_id, ok_secret_key
-            )
-        )
-    return True
+    if ok_enabled and ok_access_token and ok_group_id:
+        if _handle_ok_deletion(row, row_num, col_idx, ok_access_token,
+                               ok_app_key, ok_group_id, ok_secret_key):
+            deletions_done = True
+
+    return deletions_done
 
 
 def _handle_pending_date(row, row_num, col_idx, now):
@@ -366,25 +467,32 @@ def _get_platform_publish_info(
         'TG': {
             'is_enabled': bool(ctx['tg_bot'] and ctx['tg_channel']),
             'publish_func': lambda: publish_tg(
-                ctx['tg_bot'], ctx['tg_channel'],
-                ctx['clear_text'], ctx['img_path']
-            )
+                ctx['tg_bot'],
+                ctx['tg_channel'],
+                ctx['clear_text'],
+                ctx['img_path'],
+            ),
         },
         'VK': {
             'is_enabled': bool(ctx['vk_token'] and ctx['vk_owner_int']),
             'publish_func': lambda: publish_vk(
-                ctx['vk_token'], ctx['vk_owner_int'],
-                ctx['clear_text'], ctx['img_path']
-            )
+                ctx['vk_token'],
+                ctx['vk_owner_int'],
+                ctx['clear_text'],
+                ctx['img_path'],
+            ),
         },
         'OK': {
             'is_enabled': ctx['ok_enabled'],
             'publish_func': lambda: publish_ok(
-                ctx['clear_text'], ctx['ok_access_token'],
-                ctx['ok_app_key'], ctx['ok_group_id'],
-                ctx['ok_secret_key'], ctx['img_path']
-            )
-        }
+                ctx['clear_text'],
+                ctx['ok_access_token'],
+                ctx['ok_app_key'],
+                ctx['ok_group_id'],
+                ctx['ok_secret_key'],
+                ctx['img_path'],
+            ),
+        },
     }
 
     config = platform_config.get(platform_short)
@@ -421,17 +529,112 @@ def _publish_to_all_platforms(row, row_num, col_idx, content, ctx):
 
     for platform_full, platform_short in PLATFORMS:
         result = _get_platform_publish_info(
-            platform_full, platform_short, row, row_num, col_idx, ctx
+            platform_full,
+            platform_short,
+            row,
+            row_num,
+            col_idx,
+            ctx,
         )
+
         if result:
-            is_enabled, is_selected, publish_func = result
+            is_enabled, _, publish_func = result
             handle_platform_publish(
-                row_num, platform_short,
+                row_num,
+                platform_short,
                 publish_func=publish_func,
                 publish_args=(),
-                col_idx=col_idx, row=row,
-                is_enabled=is_enabled, is_selected=is_selected
+                col_idx=col_idx,
+                row=row,
+                is_enabled=is_enabled,
             )
+
+
+def _should_delete_post(row, col_idx, now):
+    """Проверяет, нужно ли удалить пост.
+
+    Args:
+        row: Строка таблицы.
+        col_idx: Словарь {имя_колонки: индекс}.
+        now: Текущее время.
+
+    Returns:
+        bool: True если нужно удалить пост.
+    """
+    del_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
+    del_time = parse_datetime_ru(get_field(row, col_idx, 'Дата удаления'))
+    return del_flag or (del_time and del_time <= now)
+
+
+def _process_deletion(
+    row, row_num, col_idx,
+    tg_bot, tg_channel,
+    vk_enabled, vk_token, vk_owner_int,
+    ok_enabled, ok_access_token, ok_app_key,
+    ok_group_id, ok_secret_key
+):
+    """Выполняет удаление поста на всех платформах."""
+    _handle_deletion(
+        row, row_num, col_idx,
+        tg_bot, tg_channel,
+        vk_enabled, vk_token, vk_owner_int,
+        ok_enabled, ok_access_token, ok_app_key,
+        ok_group_id, ok_secret_key
+    )
+
+
+def _process_publication(
+    row, row_num, col_idx,
+    now, tg_bot, tg_channel,
+    vk_token, vk_owner_int,
+    ok_enabled, ok_access_token, ok_app_key,
+    ok_group_id, ok_secret_key,
+    content
+):
+    """Выполняет публикацию поста на всех платформах.
+
+    Args:
+        row: Строка таблицы.
+        row_num: Номер строки.
+        col_idx: Словарь {имя_колонки: индекс}.
+        now: Текущее время.
+        tg_bot: Telegram Bot.
+        tg_channel: ID канала TG.
+        vk_token: Токен VK.
+        vk_owner_int: ID владельца VK.
+
+        ok_enabled: Флаг включения OK.
+        ok_access_token: Токен доступа OK.
+        ok_app_key: Ключ приложения OK.
+        ok_group_id: ID группы OK.
+        ok_secret_key: Секретный ключ OK.
+        content: Кортеж (clear_text, img_path) или None.
+
+    Returns:
+        bool: True если публикация была выполнена или запланирована.
+    """
+    # 1. Ожидание даты публикации
+    if _handle_pending_date(row, row_num, col_idx, now):
+        return True  # Публикация запланирована
+
+    # 2. Проверка контента
+    if not content:
+        return False  # Пропуск (пустой пост)
+
+    # 3. Публикация на всех платформах
+    ctx = {
+        'tg_bot': tg_bot,
+        'tg_channel': tg_channel,
+        'vk_token': vk_token,
+        'vk_owner_int': vk_owner_int,
+        'ok_enabled': ok_enabled,
+        'ok_access_token': ok_access_token,
+        'ok_app_key': ok_app_key,
+        'ok_group_id': ok_group_id,
+        'ok_secret_key': ok_secret_key,
+    }
+    _publish_to_all_platforms(row, row_num, col_idx, content, ctx)
+    return True
 
 
 def process_row(
@@ -463,20 +666,16 @@ def process_row(
     """
     img_path = None
     try:
-        # 0. VK credentials
+        # 0. Получение VK credentials
         vk_token, vk_owner_int, _ = _get_vk_credentials(
             row, row_num, col_idx, vk_accounts,
             vk_default_token, vk_default_owner_int
         )
         vk_enabled = bool(vk_token and vk_owner_int)
 
-        # 1. Удаление
-        del_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
-        del_time = parse_datetime_ru(get_field(row, col_idx, 'Дата удаления'))
-        should_delete = del_flag or (del_time and del_time <= now)
-
-        if should_delete:
-            _handle_deletion(
+        # 1. Проверка необходимости удаления
+        if _should_delete_post(row, col_idx, now):
+            _process_deletion(
                 row, row_num, col_idx,
                 tg_bot, tg_channel,
                 vk_enabled, vk_token, vk_owner_int,
@@ -485,28 +684,20 @@ def process_row(
             )
             return
 
-        # 2. Ожидание даты публикации
-        if _handle_pending_date(row, row_num, col_idx, now):
-            return
-
-        # 3. Загрузка контента
+        # 2. Загрузка контента
         content = _load_content_or_skip(row, row_num, col_idx)
-        if not content:
-            return
+        if content is not None:
+            _, img_path = content  # сохраняем путь к изображению для очистки
 
-        # 4. Публикация на всех платформах
-        ctx = {
-            'tg_bot': tg_bot,
-            'tg_channel': tg_channel,
-            'vk_token': vk_token,
-            'vk_owner_int': vk_owner_int,
-            'ok_enabled': ok_enabled,
-            'ok_access_token': ok_access_token,
-            'ok_app_key': ok_app_key,
-            'ok_group_id': ok_group_id,
-            'ok_secret_key': ok_secret_key,
-        }
-        _publish_to_all_platforms(row, row_num, col_idx, content, ctx)
+        # 3. Обработка публикации
+        _process_publication(
+            row, row_num, col_idx,
+            now, tg_bot, tg_channel,
+            vk_token, vk_owner_int,
+            ok_enabled, ok_access_token, ok_app_key,
+            ok_group_id, ok_secret_key,
+            content
+        )
 
     except Exception as e:
         logger.error(
@@ -519,16 +710,15 @@ def process_row(
 # ------------------- ГЛАВНЫЙ ЦИКЛ -------------------
 
 
-def main():
-    """Основной цикл программы.
+def _init_google_sheets():
+    """Инициализирует подключение к Google Sheets.
 
-    Инициализирует Google Sheets, платформы и запускает цикл обработки.
+    Returns:
+        tuple: (worksheet, spreadsheet_id) если успешно.
+
+    Raises:
+        SystemExit: При критической ошибке инициализации.
     """
-    load_dotenv()
-    print('🚀 SMM Planner: Оркестратор запущен')
-    print('=' * 50)
-
-    # ---------- ИНИЦИАЛИЗАЦИЯ GOOGLE SHEETS ----------
     spreadsheet_id = os.getenv('SPREADSHEET_ID')
     credentials_path = os.getenv('CREDENTIALS_PATH', 'credentials.json')
 
@@ -553,10 +743,11 @@ def main():
         )
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_key(spreadsheet_id)
-        worksheet = spreadsheet.get_worksheet(0)
-        init_worksheet(worksheet)
+        init_spreadsheet(spreadsheet)
         logger.info('Google Sheets авторизован')
         print('✅ Google Sheets подключён')
+        return spreadsheet, spreadsheet_id
+
     except requests.exceptions.ConnectionError as e:
         logger.critical(f'Ошибка сети Google Sheets: {e}')
         print('❌ Ошибка сети. Проверьте интернет и перезапустите.')
@@ -578,7 +769,15 @@ def main():
         print('❌ Ошибка подключения к Google Sheets')
         sys.exit(1)
 
-    # ---------- ИНИЦИАЛИЗАЦИЯ ПЛАТФОРМ ----------
+
+def _init_platforms():
+    """Инициализирует платформы и загружает VK аккаунты.
+
+    Returns:
+        tuple: (tg_bot, tg_channel, vk_token, vk_owner_int,
+                ok_enabled, ok_access_token, ok_app_key,
+                ok_group_id, ok_secret_key, vk_accounts)
+    """
     tg_token = os.getenv('TG_BOT_TOKEN')
     tg_channel = os.getenv('TG_CHANNEL_ID')
     vk_token = os.getenv('VK_KEY')
@@ -590,10 +789,12 @@ def main():
 
     ok_enabled = all([ok_app_key, ok_access_token, ok_secret_key, ok_group_id])
 
+    # Инициализация Telegram
     tg_bot = Bot(token=tg_token) if tg_token and tg_channel else None
     if not tg_bot:
         print('⚠️ Telegram отключена (нет токена или канала)')
 
+    # Инициализация VK
     vk_owner_int = None
     if vk_owner_raw:
         try:
@@ -604,6 +805,7 @@ def main():
     if not (vk_token and vk_owner_int):
         print('⚠️ VK отключена (нет токена или owner ID)')
 
+    # Инициализация OK.ru
     if not ok_enabled:
         print('⚠️ OK.ru отключена (нет всех необходимых переменных)')
     else:
@@ -613,6 +815,30 @@ def main():
     vk_accounts = load_accounts_from_sheet(sheet_index=1)
     vk_accounts_count = len(vk_accounts.get('VK', {}))
     print(f'📦 Загружено VK аккаунтов: {vk_accounts_count}')
+
+    return (
+        tg_bot,
+        tg_channel,
+        vk_token,
+        vk_owner_int,
+        ok_enabled,
+        ok_access_token,
+        ok_app_key,
+        ok_group_id,
+        ok_secret_key,
+        vk_accounts,
+    )
+
+
+def _main_loop(platforms):
+    """Основной цикл обработки строк таблицы.
+
+    Args:
+        platforms: Кортеж с инициализированными платформами.
+    """
+    tg_bot, tg_channel, vk_token, vk_owner_int, \
+        ok_enabled, ok_access_token, ok_app_key, \
+        ok_group_id, ok_secret_key, vk_accounts = platforms
 
     while True:
         try:
@@ -648,6 +874,25 @@ def main():
             logger.critical(
                 f'Критическая ошибка цикла: {e}', exc_info=True)
             time.sleep(POLL_INTERVAL)
+
+
+def main():
+    """Основной цикл программы.
+
+    Инициализирует Google Sheets, платформы и запускает цикл обработки.
+    """
+    load_dotenv()
+    print('🚀 SMM Planner: Оркестратор запущен')
+    print('=' * 50)
+
+    # Инициализация Google Sheets
+    _init_google_sheets()
+
+    # Инициализация платформ
+    platforms = _init_platforms()
+
+    # Запуск основного цикла
+    _main_loop(platforms)
 
 
 if __name__ == '__main__':

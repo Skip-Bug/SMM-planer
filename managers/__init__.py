@@ -15,7 +15,7 @@ from managers.sheets import (
     batch_update_by_headers,
     get_field,
     get_rows_with_numbers,
-    init_worksheet
+    init_spreadsheet
 )
 
 __all__ = [
@@ -30,5 +30,5 @@ __all__ = [
     'batch_update_by_headers',
     'get_field',
     'get_rows_with_numbers',
-    'init_worksheet'
+    'init_spreadsheet',
 ]

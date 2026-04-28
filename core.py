@@ -12,7 +12,6 @@ from google.oauth2.service_account import Credentials
 import requests
 from telegram import Bot
 
-from content_loader import load_content, load_image
 from managers import (
     batch_update_by_headers,
     get_field,
@@ -33,6 +32,7 @@ from posters import (
     vk_send_text, vk_send_image, vk_delete,
     ok_send_text, ok_send_image, ok_delete
 )
+from utils.content_loader import load_content, load_image
 from utils.typography import clean_text
 from utils.helpers import parse_datetime_ru
 

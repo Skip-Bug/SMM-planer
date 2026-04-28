@@ -268,7 +268,8 @@ def _handle_tg_deletion(row, row_num, col_idx, tg_bot, tg_channel):
     tg_id = get_field(row, col_idx, 'TG id поста')
     tg_status = get_field(row, col_idx, 'TG Статус')
     
-    if not (tg_bot and tg_channel and tg_id and tg_status != STATUS['DELETED']):
+    if not (tg_bot and tg_channel and tg_id
+            and tg_status != STATUS['DELETED']):
         return False  # Не нужно удалять
     
     handle_platform_delete(

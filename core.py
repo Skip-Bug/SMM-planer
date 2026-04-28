@@ -33,8 +33,8 @@ from posters import (
     vk_send_text, vk_send_image, vk_delete,
     ok_send_text, ok_send_image, ok_delete
 )
-from typography import clean_text
-from utils import parse_datetime_ru
+from utils.typography import clean_text
+from utils.helpers import parse_datetime_ru
 
 # ------------------- ЛОГИРОВАНИЕ -------------------
 logging.basicConfig(

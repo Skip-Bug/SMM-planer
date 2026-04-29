@@ -3,9 +3,11 @@
 Универсальный: работает с текстом, URL, файлами.
 Исключения не обрабатываются внутри — они передаются наверх.
 """
-import requests
-from pathlib import Path
 import tempfile
+from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
 
 REQUEST_TIMEOUT = 10   # Таймаут для текстовых запросов (секунды)
 IMAGE_TIMEOUT = 30     # Таймаут для загрузки изображений (секунды)
@@ -54,19 +56,29 @@ def load_image(image_url):
     Raises:
         requests.RequestException: Если URL недоступен.
     """
+
     if not image_url or not isinstance(image_url, str):
         return None
 
-    if not image_url.startswith(('http://', 'https://')):
+    if image_url.startswith(('http://', 'https://')):
+        response = requests.get(image_url, timeout=IMAGE_TIMEOUT)
+        response.raise_for_status()
+        content = response.content
+        # Получаем чистый путь из URL (без параметров)
+        parsed = urlparse(image_url)
+        clean_path = parsed.path
+        suffix = Path(clean_path).suffix or '.jpg'
+    else:
         path = Path(image_url)
-        return path if path.exists() else None
+        if not path.exists():
+            return None
+        content = path.read_bytes()
+        suffix = path.suffix or '.jpg'
 
-    response = requests.get(image_url, timeout=IMAGE_TIMEOUT)
-    response.raise_for_status()
-
-    temp_dir = Path(tempfile.gettempdir())
-    image_name = Path(image_url).name or DEFAULT_IMAGE_NAME
-    image_path = temp_dir / image_name
-
-    image_path.write_bytes(response.content)
-    return image_path
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=suffix,
+        prefix="smm_img_"
+    ) as tmp:
+        tmp.write(content)
+        return Path(tmp.name)

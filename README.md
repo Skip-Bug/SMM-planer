@@ -25,4 +25,4 @@ pip install requests python-dotenv
 Установите зависимости:
 
 ```bash
-pip install requests python-dotenv
+```pip install requests python-dotenv```

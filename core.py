@@ -48,7 +48,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ------------------- КОНСТАНТЫ -------------------
-POLL_INTERVAL = 20  # интервал опроса таблицы (сек)
+POLL_INTERVAL = 10  # интервал опроса таблицы (сек)
 
 
 def _delete_tg(bot, channel, post_id, row_num):
@@ -141,9 +141,10 @@ def publish_tg(bot, channel_id, text, img_path=None):
         int: message_id опубликованного сообщения.
     """
     if img_path:
-        return tg_send_image(bot, channel_id, img_path, caption=text)
+        return tg_send_image(bot, channel_id, str(img_path), caption=text)
     else:
         return tg_send_text(bot, channel_id, text)
+
 
 # ------------------- ПУБЛИКАЦИЯ В VK -------------------
 
@@ -161,7 +162,7 @@ def publish_vk(token, owner, text, img_path=None):
         int: post_id опубликованного поста.
     """
     if img_path:
-        return vk_send_image(token, owner, img_path, caption=text)
+        return vk_send_image(token, owner, str(img_path), caption=text)
     else:
         return vk_send_text(token, owner, text)
 
@@ -550,7 +551,7 @@ def _publish_to_all_platforms(row, row_num, col_idx, content, ctx):
             )
 
 
-def _should_delete_post(row, col_idx, now):
+def _should_delete_post(row, col_idx, now, is_any_published):
     """Проверяет, нужно ли удалить пост.
 
     Args:
@@ -562,8 +563,18 @@ def _should_delete_post(row, col_idx, now):
         bool: True если нужно удалить пост.
     """
     del_flag = get_field(row, col_idx, 'Удалить').upper() == 'TRUE'
+    if not del_flag or not is_any_published:
+        return False
+
     del_time = parse_datetime_ru(get_field(row, col_idx, 'Дата удаления'))
-    return del_flag or (del_time and del_time <= now)
+    # Если дата пустая – удаляем немедленно
+    if not del_time:
+        return True
+    # Если дата указана и наступила – удаляем
+    if del_time <= now:
+        return True
+    # Иначе дата в будущем – не удаляем
+    return False
 
 
 def _process_deletion(
@@ -614,7 +625,11 @@ def _process_publication(
         bool: True если публикация была выполнена или запланирована.
     """
     # 1. Ожидание даты публикации
-    if _handle_pending_date(row, row_num, col_idx, now):
+    has_replay = any(
+        get_platform_state(row, col_idx, plat_short)[0] == STATUS['REPLAY']
+        for _, plat_short in PLATFORMS
+    )
+    if not has_replay and _handle_pending_date(row, row_num, col_idx, now):
         return True  # Публикация запланирована
 
     # 2. Проверка контента
@@ -674,7 +689,15 @@ def process_row(
         vk_enabled = bool(vk_token and vk_owner_int)
 
         # 1. Проверка необходимости удаления
-        if _should_delete_post(row, col_idx, now):
+        statuses = {
+            'TG': get_field(row, col_idx, 'TG Статус'),
+            'VK': get_field(row, col_idx, 'VK Статус'),
+            'OK': get_field(row, col_idx, 'OK Статус'),
+        }
+        is_any_published = any(st == STATUS['PUBLISHED']
+                               for st in statuses.values())
+
+        if _should_delete_post(row, col_idx, now, is_any_published):
             _process_deletion(
                 row, row_num, col_idx,
                 tg_bot, tg_channel,

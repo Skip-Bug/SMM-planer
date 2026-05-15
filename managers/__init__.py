@@ -8,15 +8,15 @@ from managers.platform import (
     process_deletion,
     process_publication,
 )
-from managers.tg import (
+from platforms.tg.handler import (
     publish_tg,
     delete_tg,
 )
-from managers.vk import (
+from platforms.vk.handler import (
     publish_vk,
     delete_vk,
 )
-from managers.ok import (
+from platforms.ok.handler import (
     publish_ok,
     delete_ok,
 )

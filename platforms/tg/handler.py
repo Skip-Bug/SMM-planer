@@ -2,7 +2,7 @@
 import logging
 
 from managers.platform import update_platform_deleted, handle_platform_delete
-from posters import tg_delete, tg_send_text, tg_send_image
+from platforms.tg.poster import tg_delete, tg_send_text, tg_send_image
 
 logger = logging.getLogger(__name__)
 

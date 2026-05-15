@@ -204,9 +204,9 @@ def process_deletion(sheet, tg_params, vk_params, ok_params):
     Returns:
         bool: True если удаление выполнено.
     """
-    from managers.tg import handle_tg_deletion
-    from managers.vk import handle_vk_deletion
-    from managers.ok import handle_ok_deletion
+    from platforms.tg.handler import handle_tg_deletion
+    from platforms.vk.handler import handle_vk_deletion
+    from platforms.ok.handler import handle_ok_deletion
 
     deletions_done = False
 
@@ -271,9 +271,9 @@ def _get_platform_publish_info(platform_full, platform_short, sheet, ctx):
     Returns:
         tuple: (is_enabled, is_selected, publish_func) или None.
     """
-    from managers.tg import publish_tg
-    from managers.vk import publish_vk
-    from managers.ok import publish_ok
+    from platforms.tg.handler import publish_tg
+    from platforms.vk.handler import publish_vk
+    from platforms.ok.handler import publish_ok
 
     status = get_platform_state(sheet['row'], sheet['col_idx'], platform_short)[0]
     flag_col = f'{platform_short} Отправить'

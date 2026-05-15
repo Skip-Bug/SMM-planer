@@ -232,40 +232,6 @@ python core.py
 
 у таблицы есть доступ для сервисного аккаунта (чтение)
 
-### 📄 Файлы и модули проекта
-
-```
-SMM-planer/
-│
-├── 📄 core.py                    # Ядро программы
-├── 🔧 .env                       # Credentials (токены)
-├── 🔑 credentials.json           # Google API ключ
-├── 📝 requirements.txt           # Зависимости
-├── 📄 README.md                  # Документация (в работе)
-├── 📄 RUN_WINDOWS.md             # Инструкция по запуску
-│
-├── 🚀 run_smm.bat               # ⭐️ Запуск (MVP)
-├── 🚀 start_smm.bat             # ⭐️ Автоперезапуск
-│
-├── 📦 managers/                  # Модули управления
-│   ├── __init__.py
-│   ├── accounts.py               # VK аккаунты
-│   ├── platform.py               # Платформы (TG/VK/OK)
-│   └── sheets.py                 # Google Sheets
-│
-├── 📦 posters/                   # Постинг платформ
-│   ├── __init__.py
-│   ├── tg.py                     # Telegram
-│   ├── vk.py                     # VKontakte
-│   └── ok.py                     # OK.ru
-│
-└── 📦 utils/                     # Утилиты
-    ├── __init__.py
-    ├── content_loader.py         # Загрузка текста/картинок
-    ├── typography.py             # Типографика
-    └── helpers.py                # Вспомогательные функции
-```
-
 📝 Лицензия
 MIT – используйте, модифицируйте, распространяйте свободно.
 

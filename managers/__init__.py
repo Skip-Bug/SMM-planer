@@ -4,7 +4,21 @@ from managers.platform import (
     handle_platform_publish,
     get_platform_state,
     reset_replay_to_pending,
-    STATUS
+    STATUS,
+    process_deletion,
+    process_publication,
+)
+from managers.tg import (
+    publish_tg,
+    delete_tg,
+)
+from managers.vk import (
+    publish_vk,
+    delete_vk,
+)
+from managers.ok import (
+    publish_ok,
+    delete_ok,
 )
 from managers.accounts import (
     load_accounts_from_sheet,
@@ -24,6 +38,14 @@ __all__ = [
     'get_platform_state',
     'reset_replay_to_pending',
     'STATUS',
+    'process_deletion',
+    'process_publication',
+    'publish_tg',
+    'delete_tg',
+    'publish_vk',
+    'delete_vk',
+    'publish_ok',
+    'delete_ok',
     'load_accounts_from_sheet',
     'get_account',
     'get_active_accounts',

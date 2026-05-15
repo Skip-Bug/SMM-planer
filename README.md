@@ -139,7 +139,7 @@ Channel/Group ID группы (положительное число)
 ```
 # Google Sheets
 
-SPREADSHEET*ID=ваш*идентификатор_таблицы
+SPREADSHEET_ID=ваш идентификатор_таблицы
 CREDENTIALS_PATH=credentials.json
 
 # Telegram
@@ -149,15 +149,15 @@ TG_CHANNEL_ID=@my_channel
 
 # VK (fallback, используется если в строке не указан VK Аккаунт)
 
-VK_KEY=ваш*сервисный_ключ
+VK_KEY=ваш сервисный_ключ
 VK_GROUP_ID=123456789 # положительное число
 
 # OK.ru
 
-OK_APPLICATION_KEY=ваш_application_key
-OK_ACCESS_TOKEN=токен*доступа
-OK_SECRET_KEY=секретный*ключ
-OK_GROUP_ID=группа_id
+OK_APPLICATION_KEY=ваш application_key
+OK_ACCESS_TOKEN=токен доступа
+OK_SECRET_KEY=секретный ключ
+OK_GROUP_ID=группа id
 Незнакомые переменные можно оставить пустыми – соответствующая платформа будет отключена.
 ```
 ## 🔑 Как получить токены

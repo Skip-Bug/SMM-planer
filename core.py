@@ -15,7 +15,6 @@ from telegram import Bot
 from managers import (
     get_field,
     get_rows_with_numbers,
-    get_platform_state,
     STATUS,
     init_spreadsheet,
     load_accounts_from_sheet,

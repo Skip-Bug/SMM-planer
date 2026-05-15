@@ -1,7 +1,7 @@
 """Модуль для операций с Telegram."""
 import logging
 
-from managers.platform import update_platform_deleted, handle_platform_delete
+from managers.status_sheet import update_platform_deleted, handle_platform_delete
 from managers.sheets import get_field
 from platforms.tg.poster import tg_delete, tg_send_text, tg_send_image
 

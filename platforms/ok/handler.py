@@ -1,7 +1,7 @@
 """Модуль для операций с OK.ru."""
 import logging
 
-from managers.platform import update_platform_deleted, handle_platform_delete
+from managers.status_sheet import update_platform_deleted, handle_platform_delete
 from managers.sheets import get_field
 from platforms.ok.poster import ok_delete, ok_send_text, ok_send_image
 

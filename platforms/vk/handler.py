@@ -1,7 +1,7 @@
 """Модуль для операций с VK."""
 import logging
 
-from managers.platform import update_platform_deleted, handle_platform_delete
+from managers.status_sheet import update_platform_deleted, handle_platform_delete
 from managers.sheets import get_field
 from platforms.vk.poster import vk_delete, vk_send_text, vk_send_image
 

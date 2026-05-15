@@ -2,6 +2,7 @@
 import logging
 
 from managers.platform import update_platform_deleted, handle_platform_delete
+from managers.sheets import get_field
 from platforms.vk.poster import vk_delete, vk_send_text, vk_send_image
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,6 @@ def handle_vk_deletion(sheet, vk_params, STATUS):
     Returns:
         bool: True если удаление было выполнено.
     """
-    from managers.sheets import get_field
-
     vk_id = get_field(sheet['row'], sheet['col_idx'], 'VK id поста')
     vk_status = get_field(sheet['row'], sheet['col_idx'], 'VK Статус')
 

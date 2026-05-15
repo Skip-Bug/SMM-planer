@@ -2,6 +2,7 @@
 import logging
 
 from managers.platform import update_platform_deleted, handle_platform_delete
+from managers.sheets import get_field
 from platforms.ok.poster import ok_delete, ok_send_text, ok_send_image
 
 logger = logging.getLogger(__name__)
@@ -67,8 +68,6 @@ def handle_ok_deletion(sheet, ok_params, STATUS):
     Returns:
         bool: True если удаление было выполнено.
     """
-    from managers.sheets import get_field
-
     ok_id = get_field(sheet['row'], sheet['col_idx'], 'OK id поста')
     ok_status = get_field(sheet['row'], sheet['col_idx'], 'OK Статус')
 

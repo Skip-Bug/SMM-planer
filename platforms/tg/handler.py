@@ -2,6 +2,7 @@
 import logging
 
 from managers.platform import update_platform_deleted, handle_platform_delete
+from managers.sheets import get_field
 from platforms.tg.poster import tg_delete, tg_send_text, tg_send_image
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,6 @@ def handle_tg_deletion(sheet, tg_params, STATUS):
     Returns:
         bool: True если удаление было выполнено.
     """
-    from managers.sheets import get_field
-
     tg_id = get_field(sheet['row'], sheet['col_idx'], 'TG id поста')
     tg_status = get_field(sheet['row'], sheet['col_idx'], 'TG Статус')
 
